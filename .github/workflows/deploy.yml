@@ -35,8 +35,9 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          # 仓库名是 TierMaker，所以 base path 是 /TierMaker/
-          BASE_URL: /TierMaker/
+          # 使用自定义域名时，base path 应该是 '/'
+          # 如果使用 github.io 子路径，可以设置为 '/TierMaker/'
+          BASE_URL: /
           NODE_ENV: production
 
       - name: Setup Pages
