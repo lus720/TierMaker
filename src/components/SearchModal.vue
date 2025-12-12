@@ -20,7 +20,7 @@ const page = ref(1)
 const hasMore = ref(true)
 
 // 防抖搜索
-let searchTimeout: number | null = null
+let searchTimeout: ReturnType<typeof setTimeout> | null = null
 watch([keyword, apiSource], () => {
   if (searchTimeout) {
     clearTimeout(searchTimeout)
