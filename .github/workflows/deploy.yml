@@ -35,7 +35,8 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          BASE_URL: /${{ github.event.repository.name }}/
+          # 仓库名是 TierMaker，所以 base path 是 /TierMaker/
+          BASE_URL: /TierMaker/
           NODE_ENV: production
 
       - name: Setup Pages

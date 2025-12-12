@@ -44,9 +44,9 @@ git push -u origin main
 由于项目使用了动态 base path，需要确保仓库名称正确：
 
 1. 在 `vite.config.ts` 中，`base` 配置会根据环境变量 `BASE_URL` 自动设置
-2. GitHub Actions workflow 会自动设置 `BASE_URL` 为 `/${{ github.event.repository.name }}/`
-3. 如果你的仓库名是 `tier-list-simple`，部署后的 URL 将是：
-   `https://YOUR_USERNAME.github.io/tier-list-simple/`
+2. GitHub Actions workflow 会自动设置 `BASE_URL` 为 `/TierMaker/`
+3. 部署后的 URL 将是：
+   `https://lushuozju.github.io/TierMaker/`
 
 ### 5. 触发部署
 
