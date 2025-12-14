@@ -4,6 +4,7 @@ const STORAGE_KEY = 'tier-list-data'
 const TIER_CONFIG_KEY = 'tier-config'
 const BGM_TOKEN_KEY = 'bgm-access-token'
 const TITLE_KEY = 'tier-list-title'
+const TITLE_FONT_SIZE_KEY = 'tier-list-title-font-size'
 
 /**
  * 默认评分等级配置
@@ -142,6 +143,36 @@ export function loadTitle(): string {
 }
 
 /**
+ * 保存标题字体大小
+ */
+export function saveTitleFontSize(fontSize: number): void {
+  try {
+    localStorage.setItem(TITLE_FONT_SIZE_KEY, fontSize.toString())
+  } catch (error) {
+    console.error('保存标题字体大小失败:', error)
+  }
+}
+
+/**
+ * 加载标题字体大小
+ * 返回默认字体大小 32 如果未设置
+ */
+export function loadTitleFontSize(): number {
+  try {
+    const fontSize = localStorage.getItem(TITLE_FONT_SIZE_KEY)
+    if (fontSize) {
+      const parsed = parseInt(fontSize, 10)
+      if (!isNaN(parsed) && parsed >= 12 && parsed <= 120) {
+        return parsed
+      }
+    }
+  } catch (error) {
+    console.error('加载标题字体大小失败:', error)
+  }
+  return 32 // 默认字体大小
+}
+
+/**
  * 导出所有数据（包括 tiers、configs、title）
  */
 export interface ExportData {
@@ -151,6 +182,7 @@ export interface ExportData {
   exportDate: string
   version: string
   itemsPerRow?: number
+  titleFontSize?: number
 }
 
 export function exportAllData(): ExportData {
@@ -158,6 +190,7 @@ export function exportAllData(): ExportData {
     tiers: loadTierData(),
     tierConfigs: loadTierConfigs(),
     title: loadTitle(),
+    titleFontSize: loadTitleFontSize(),
     exportDate: new Date().toISOString(),
     version: '1.0.0'
   }
@@ -179,6 +212,9 @@ export function importAllData(data: ExportData): {
     saveTierConfigs(data.tierConfigs)
     if (data.title) {
       saveTitle(data.title)
+    }
+    if (data.titleFontSize !== undefined) {
+      saveTitleFontSize(data.titleFontSize)
     }
     
     return { success: true }

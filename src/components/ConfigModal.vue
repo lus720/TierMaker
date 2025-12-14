@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import type { TierConfig } from '../types'
-import { loadBgmToken, saveBgmToken } from '../utils/storage'
+import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize } from '../utils/storage'
 
 const props = defineProps<{
   configs: TierConfig[]
@@ -10,10 +10,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   update: [configs: TierConfig[]]
+  'update-title-font-size': [fontSize: number]
 }>()
 
 const localConfigs = ref<TierConfig[]>([])
 const bgmToken = ref('')
+const titleFontSize = ref<number>(32)
 const inputValues = ref<Record<number, string>>({})
 const modalContentRef = ref<HTMLElement | null>(null)
 const mouseDownInside = ref(false)
@@ -55,6 +57,7 @@ onMounted(() => {
   if (savedToken) {
     bgmToken.value = savedToken
   }
+  titleFontSize.value = loadTitleFontSize()
 })
 
 function addTier() {
@@ -115,6 +118,8 @@ function moveDown(index: number) {
 function handleSave() {
   emit('update', localConfigs.value)
   saveBgmToken(bgmToken.value || null)
+  saveTitleFontSize(titleFontSize.value)
+  emit('update-title-font-size', titleFontSize.value)
   emit('close')
 }
 
@@ -156,6 +161,24 @@ function handleTierIdBlur(config: TierConfig, index: number) {
         <button class="close-btn" @click="emit('close')">×</button>
       </div>
       
+      <div class="modal-body">
+      <div class="config-section">
+        <h3 class="section-title">显示设置</h3>
+        <div class="config-item-row">
+          <label for="title-font-size">标题字体大小:</label>
+          <input
+            id="title-font-size"
+            v-model.number="titleFontSize"
+            type="number"
+            min="12"
+            max="120"
+            step="1"
+            class="config-input"
+            style="max-width: 120px;"
+          />
+        </div>
+      </div>
+      
       <div class="config-section">
         <h3 class="section-title">Bangumi Access Token（可选）</h3>
         <div class="token-config">
@@ -182,12 +205,10 @@ function handleTierIdBlur(config: TierConfig, index: number) {
         </div>
       </div>
       
-      <div class="config-section">
+      <div class="config-section config-section-tiers">
         <h3 class="section-title">评分等级配置</h3>
-      </div>
-      
-      <div class="config-list">
-        <TransitionGroup name="list" tag="div">
+        
+        <div class="config-list">
           <div
             v-for="(config, index) in localConfigs"
             :key="(config as any)._internalId || `config-${index}`"
@@ -254,7 +275,9 @@ function handleTierIdBlur(config: TierConfig, index: number) {
             删除
           </button>
           </div>
-        </TransitionGroup>
+        </div>
+        
+      </div>
       </div>
       
       <div class="modal-footer">
@@ -290,6 +313,41 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   max-height: 80vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  position: relative;
+}
+
+/* 自定义滚动条样式 - WebKit 浏览器（Chrome, Safari, Edge） */
+.modal-body::-webkit-scrollbar {
+  width: 12px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 6px;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 6px;
+  border: 2px solid #f1f1f1;
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Firefox 滚动条样式 */
+.modal-body {
+  scrollbar-width: thin;
+  scrollbar-color: #888 #f1f1f1;
 }
 
 .modal-header {
@@ -298,6 +356,7 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   align-items: center;
   padding: 20px;
   border-bottom: 2px solid #000000;
+  flex-shrink: 0;
 }
 
 .modal-title {
@@ -396,10 +455,12 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 }
 
 .config-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 15px;
 }
+
 
 .config-item {
   display: flex;
@@ -410,25 +471,6 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   border: 2px solid #000000;
 }
 
-/* TransitionGroup 动画 */
-.list-move {
-  transition: transform 0.3s ease;
-}
-
-.list-enter-active,
-.list-leave-active {
-  transition: all 0.3s ease;
-}
-
-.list-enter-from {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
-.list-leave-to {
-  opacity: 0;
-  transform: translateY(10px);
-}
 
 .list-leave-active {
   position: absolute;
@@ -541,8 +583,10 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   padding: 20px;
   border-top: 2px solid #000000;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
+  flex-shrink: 0;
+  gap: 10px;
 }
 
 .add-btn {

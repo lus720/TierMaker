@@ -8,7 +8,7 @@ import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
 import { getItemUrl } from './utils/url'
 import type { Tier, AnimeItem, TierConfig } from './types'
-import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, exportAllData, importAllData, type ExportData } from './utils/storage'
+import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, type ExportData } from './utils/storage'
 
 const tiers = ref<Tier[]>([])
 const tierConfigs = ref<TierConfig[]>([])
@@ -21,6 +21,7 @@ const currentIndex = ref<number | null>(null)
 const currentEditItem = ref<AnimeItem | null>(null)
 const isLongPressEdit = ref(false)
 const title = ref<string>('极简 Tier List')
+const titleFontSize = ref<number>(32)
 const isDragging = ref(false) // 全局拖动状态
 const tierListRef = ref<InstanceType<typeof TierList> | null>(null)
 
@@ -54,6 +55,7 @@ const duplicateItemIds = computed(() => {
 // 加载数据
 onMounted(() => {
   title.value = loadTitle()
+  titleFontSize.value = loadTitleFontSize()
   tierConfigs.value = loadTierConfigs()
   tiers.value = loadTierData()
   
@@ -309,6 +311,10 @@ function handleUpdateConfigs(newConfigs: TierConfig[]) {
       tierListRef.value?.updateLabelWidth()
     }, 100)
   })
+}
+
+function handleUpdateTitleFontSize(newFontSize: number) {
+  titleFontSize.value = newFontSize
 }
 
 // 监听设置页面关闭，重新计算宽度
@@ -734,16 +740,44 @@ async function handleExportImage() {
           clonedTitle.style.transform = 'none'
           clonedTitle.style.textAlign = 'center'
           clonedTitle.style.width = '100%'
+          // 移除标题的所有 margin 和 padding，确保只有 paddingBottom 控制间距
+          clonedTitle.style.margin = '0'
+          clonedTitle.style.marginTop = '0'
+          clonedTitle.style.marginBottom = '0'
+          clonedTitle.style.padding = '0'
+          clonedTitle.style.paddingTop = '0'
+          clonedTitle.style.paddingBottom = '0'
+          // 设置 line-height 为 1，确保标题高度等于字体大小
+          clonedTitle.style.lineHeight = '1'
         }
         
-        // 确保 header 正常显示，并移除底部间距（保留边框）
+        // 确保 header 正常显示，并设置标题和横线的间距为字体大小的一半
         const clonedHeader = clonedDoc.querySelector('.header') as HTMLElement
         if (clonedHeader) {
+          // 从原始文档获取标题的实际字体大小
+          let titleFontSize = 32 // 默认值
+          try {
+            const originalTitle = document.querySelector('.title') as HTMLElement
+            if (originalTitle) {
+              const computedStyle = window.getComputedStyle(originalTitle)
+              const fontSizeStr = computedStyle.fontSize
+              const parsedSize = parseFloat(fontSizeStr)
+              if (!isNaN(parsedSize) && parsedSize > 0) {
+                titleFontSize = parsedSize
+              }
+            }
+          } catch (e) {
+            // 如果获取失败，使用默认值
+            console.warn('获取标题字体大小失败，使用默认值32px:', e)
+          }
+          const titleHalfFontSize = titleFontSize / 2
+          
           clonedHeader.style.display = 'flex'
           clonedHeader.style.justifyContent = 'center'
           clonedHeader.style.alignItems = 'center'
           clonedHeader.style.marginBottom = '0' // 移除底部间距，让横线紧贴第一个等级
-          clonedHeader.style.paddingBottom = '10px' // 保持底部内边距，确保按钮区域有足够空间
+          clonedHeader.style.paddingTop = '0' // 确保顶部没有额外间距
+          clonedHeader.style.paddingBottom = `${titleHalfFontSize}px` // 标题和横线的间距为字体大小的一半
           // 保留 border-bottom，与页面显示一致
         }
         
@@ -996,16 +1030,29 @@ async function handleExportPDF() {
           clonedTitle.style.transform = 'none'
           clonedTitle.style.textAlign = 'center'
           clonedTitle.style.width = '100%'
+          // 移除标题的所有 margin 和 padding，确保只有 paddingBottom 控制间距
+          clonedTitle.style.margin = '0'
+          clonedTitle.style.marginTop = '0'
+          clonedTitle.style.marginBottom = '0'
+          clonedTitle.style.padding = '0'
+          clonedTitle.style.paddingTop = '0'
+          clonedTitle.style.paddingBottom = '0'
+          // 设置 line-height 为 1，确保标题高度等于字体大小
+          clonedTitle.style.lineHeight = '1'
         }
         
-        // 确保 header 正常显示
+        // 确保 header 正常显示，并设置标题和横线的间距为字体大小的一半
         const clonedHeader = clonedDoc.querySelector('.header') as HTMLElement
         if (clonedHeader) {
+          // 使用实际的 titleFontSize（从 ref 获取）
+          const titleHalfFontSize = titleFontSize.value / 2
+          
           clonedHeader.style.display = 'flex'
           clonedHeader.style.justifyContent = 'center'
           clonedHeader.style.alignItems = 'center'
           clonedHeader.style.marginBottom = '0'
-          clonedHeader.style.paddingBottom = '10px'
+          clonedHeader.style.paddingTop = '0' // 确保顶部没有额外间距
+          clonedHeader.style.paddingBottom = `${titleHalfFontSize}px` // 标题和横线的间距为字体大小的一半
         }
         
         // 设置 tier-list 的顶部间距
@@ -1252,10 +1299,11 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
 
 <template>
   <div class="app" ref="appContentRef">
-    <header class="header">
+    <header class="header" :style="{ paddingBottom: `${titleFontSize / 2}px` }">
       <div class="header-left"></div>
       <h1 
         class="title" 
+        :style="{ fontSize: `${titleFontSize}px` }"
         contenteditable="true"
         @input="handleTitleInput"
         @blur="handleTitleBlur"
@@ -1286,9 +1334,9 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
           v-if="isExportingImage || isExportingPDF" 
           class="btn btn-secondary" 
           @click="isExportingImage = false; isExportingPDF = false" 
-          title="恢复页面显示"
+          title="停止保存"
         >
-          恢复显示
+          停止保存
         </button>
         <button class="btn btn-secondary" @click="handleExport" title="导出数据">
           导出
@@ -1338,6 +1386,7 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
       :configs="tierConfigs"
       @close="showConfig = false"
       @update="handleUpdateConfigs"
+      @update-title-font-size="handleUpdateTitleFontSize"
     />
 
     <EditItemModal
@@ -1361,7 +1410,6 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0;
-  padding-bottom: 10px;
   border-bottom: 2px solid #000000;
   position: relative;
 }
@@ -1371,7 +1419,6 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
 }
 
 .title {
-  font-size: 32px;
   font-weight: bold;
   color: #000000;
   letter-spacing: 2px;
