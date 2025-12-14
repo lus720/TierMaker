@@ -1064,11 +1064,11 @@ async function handleExportPDF() {
     const pdfWidth = 210 // A4宽度（mm）
     const pdfHeight = (canvasHeight / canvasWidth) * pdfWidth // 按比例计算高度
     
-    // 创建PDF
+    // 创建PDF（使用实际内容高度，不强制最小高度，避免底部空白）
     const pdf = new jsPDF({
-      orientation: pdfHeight > 297 ? 'portrait' : 'portrait',
+      orientation: pdfHeight > pdfWidth ? 'portrait' : 'landscape',
       unit: 'mm',
-      format: [pdfWidth, Math.max(pdfHeight, 297)], // 至少A4高度
+      format: [pdfWidth, pdfHeight], // 使用实际内容高度
     })
     
     // 将canvas转换为图片并添加到PDF
