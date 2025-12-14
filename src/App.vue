@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, nextTick } from 'vue'
+import { ref, onMounted, watch, nextTick, computed } from 'vue'
 import html2canvas from 'html2canvas'
+import { jsPDF } from 'jspdf'
 import TierList from './components/TierList.vue'
 import SearchModal from './components/SearchModal.vue'
 import ConfigModal from './components/ConfigModal.vue'
@@ -17,8 +18,37 @@ const currentTierId = ref<string | null>(null)
 const currentRowId = ref<string | null>(null)
 const currentIndex = ref<number | null>(null)
 const currentEditItem = ref<AnimeItem | null>(null)
+const isLongPressEdit = ref(false)
 const title = ref<string>('极简 Tier List')
 const isDragging = ref(false) // 全局拖动状态
+const tierListRef = ref<InstanceType<typeof TierList> | null>(null)
+
+// 检测重复的条目（根据ID）
+const duplicateItemIds = computed(() => {
+  const idCount = new Map<string | number, number>()
+  
+  // 统计每个ID出现的次数
+  tiers.value.forEach(tier => {
+    tier.rows.forEach(row => {
+      row.items.forEach(item => {
+        if (item.id) {
+          const count = idCount.get(item.id) || 0
+          idCount.set(item.id, count + 1)
+        }
+      })
+    })
+  })
+  
+  // 返回出现次数大于1的ID集合
+  const duplicates = new Set<string | number>()
+  idCount.forEach((count, id) => {
+    if (count > 1) {
+      duplicates.add(id)
+    }
+  })
+  
+  return duplicates
+})
 
 // 加载数据
 onMounted(() => {
@@ -178,11 +208,12 @@ function handleReorder(tierId: string, rowId: string, newItems: AnimeItem[]) {
   saveTierData(tiers.value)
 }
 
-function handleEditItem(tierId: string, rowId: string, item: AnimeItem, index: number) {
+function handleEditItem(tierId: string, rowId: string, item: AnimeItem, index: number, isLongPress?: boolean) {
   currentTierId.value = tierId
   currentRowId.value = rowId
   currentIndex.value = index
   currentEditItem.value = { ...item } // 创建副本
+  isLongPressEdit.value = isLongPress || false
   showEditItem.value = true
 }
 
@@ -209,6 +240,7 @@ function handleCloseEditItem() {
   currentRowId.value = null
   currentIndex.value = null
   currentEditItem.value = null
+  isLongPressEdit.value = false
 }
 
 function handleUpdateConfigs(newConfigs: TierConfig[]) {
@@ -241,12 +273,32 @@ function handleUpdateConfigs(newConfigs: TierConfig[]) {
     const bOrder = newConfigs.find(c => c.id === b.id)?.order ?? 999
     return aOrder - bOrder
   })
+  
+  // 等待 DOM 更新后重新计算等级块宽度
+  nextTick(() => {
+    setTimeout(() => {
+      tierListRef.value?.updateLabelWidth()
+    }, 100)
+  })
 }
+
+// 监听设置页面关闭，重新计算宽度
+watch(showConfig, (newVal, oldVal) => {
+  if (oldVal === true && newVal === false) {
+    // 设置页面刚关闭
+    nextTick(() => {
+      setTimeout(() => {
+        tierListRef.value?.updateLabelWidth()
+      }, 150)
+    })
+  }
+})
 
 const titleRef = ref<HTMLHeadingElement | null>(null)
 const isEditingTitle = ref(false)
 const appContentRef = ref<HTMLElement | null>(null)
 const isExportingImage = ref(false)
+const isExportingPDF = ref(false)
 
 function handleTitleInput(e: Event) {
   const target = e.target as HTMLHeadingElement
@@ -411,12 +463,8 @@ async function handleExportImage() {
     window.scrollTo(0, 0)
     await new Promise(resolve => setTimeout(resolve, 100))
     
-    // 获取完整页面的尺寸
-    const scrollWidth = Math.max(
-      document.documentElement.scrollWidth,
-      document.body.scrollWidth,
-      appContentRef.value.scrollWidth
-    )
+    // 获取实际内容区域的尺寸（tight 模式，不包含任何留白）
+    const scrollWidth = appContentRef.value?.scrollWidth || appContentRef.value?.offsetWidth || 1400
     const scrollHeight = Math.max(
       document.documentElement.scrollHeight,
       document.body.scrollHeight,
@@ -495,19 +543,13 @@ async function handleExportImage() {
     // 额外等待确保渲染完成
     await new Promise(resolve => setTimeout(resolve, 500))
     
-    // 使用 html2canvas 截图，捕获完整页面
+    // 使用 html2canvas 截图，tight 模式（紧贴内容，无留白）
     const canvas = await html2canvas(appContentRef.value, {
       scale: 2, // 2倍缩放，提高清晰度
       useCORS: false, // 禁用CORS，因为我们已经在onclone中处理了所有图片
       allowTaint: false, // 不允许污染画布（确保所有图片都已转换为base64）
       logging: true, // 启用日志以便调试
       backgroundColor: '#ffffff',
-      width: scrollWidth,
-      height: scrollHeight,
-      windowWidth: scrollWidth,
-      windowHeight: scrollHeight,
-      scrollX: 0,
-      scrollY: 0,
       imageTimeout: 30000, // 增加图片加载超时时间
       removeContainer: false, // 保留容器
       foreignObjectRendering: false, // 禁用 foreignObject，使用传统渲染
@@ -596,16 +638,135 @@ async function handleExportImage() {
         
         console.log('onclone处理完成')
         
-        // 确保在克隆的文档中也隐藏empty slot
+        // 处理empty slot（添加作品块）
+        // 如果该等级存在作品，那么完全隐藏添加作品块（display: none）
+        // 如果该等级不存在作品，那么添加一个看不见的作品占位，使得该行的高度和有作品的等级高度一致
         const emptySlots = clonedDoc.querySelectorAll('.tier-item.empty')
         emptySlots.forEach((slot) => {
-          (slot as HTMLElement).style.display = 'none'
+          const slotElement = slot as HTMLElement
+          const tierRow = slotElement.parentElement
+          if (!tierRow) return
+          
+          // 检查该等级是否有作品（非empty的tier-item）
+          const allItems = Array.from(tierRow.children) as HTMLElement[]
+          const hasItems = allItems.some(item => !item.classList.contains('empty'))
+          
+          if (hasItems) {
+            // 如果该等级存在作品，完全隐藏添加作品块
+            slotElement.style.display = 'none'
+          } else {
+            // 如果该等级不存在作品，将添加作品块转换为不可见的作品占位
+            // 设置与作品相同的高度（173px）和宽度（100px），并完全透明
+            // 使用 opacity: 0 而不是 visibility: hidden，确保元素仍占据空间
+            slotElement.style.width = '100px'
+            slotElement.style.height = '173px'
+            slotElement.style.minHeight = '173px'
+            slotElement.style.maxHeight = '173px'
+            slotElement.style.opacity = '0'
+            slotElement.style.pointerEvents = 'none'
+            // 移除虚线边框，使其看起来像作品
+            slotElement.style.border = 'none'
+            slotElement.style.borderWidth = '0'
+            // 隐藏内部内容（占位符文字和图标）
+            const placeholder = slotElement.querySelector('.item-placeholder')
+            if (placeholder) {
+              (placeholder as HTMLElement).style.display = 'none'
+            }
+            const placeholderText = slotElement.querySelector('.placeholder-text')
+            if (placeholderText) {
+              (placeholderText as HTMLElement).style.display = 'none'
+            }
+          }
         })
         
-        // 隐藏所有按钮和交互元素
-        const buttons = clonedDoc.querySelectorAll('button, .btn, .header-actions')
+        // 隐藏所有按钮，但保留标题显示
+        const buttons = clonedDoc.querySelectorAll('button, .btn')
         buttons.forEach((btn) => {
           (btn as HTMLElement).style.display = 'none'
+        })
+        // 隐藏 header-actions 容器（包含所有按钮）
+        const headerActions = clonedDoc.querySelector('.header-actions') as HTMLElement
+        if (headerActions) {
+          headerActions.style.display = 'none'
+        }
+        // 隐藏 header-left 占位元素
+        const headerLeft = clonedDoc.querySelector('.header-left') as HTMLElement
+        if (headerLeft) {
+          headerLeft.style.display = 'none'
+        }
+        
+        // 确保标题正常显示和居中
+        const clonedTitle = clonedDoc.querySelector('.title') as HTMLElement
+        if (clonedTitle) {
+          clonedTitle.style.display = 'block'
+          clonedTitle.style.visibility = 'visible'
+          clonedTitle.style.position = 'relative'
+          clonedTitle.style.left = 'auto'
+          clonedTitle.style.transform = 'none'
+          clonedTitle.style.textAlign = 'center'
+          clonedTitle.style.width = '100%'
+        }
+        
+        // 确保 header 正常显示，并移除底部间距（保留边框）
+        const clonedHeader = clonedDoc.querySelector('.header') as HTMLElement
+        if (clonedHeader) {
+          clonedHeader.style.display = 'flex'
+          clonedHeader.style.justifyContent = 'center'
+          clonedHeader.style.alignItems = 'center'
+          clonedHeader.style.marginBottom = '0' // 移除底部间距，让横线紧贴第一个等级
+          clonedHeader.style.paddingBottom = '10px' // 保持底部内边距，确保按钮区域有足够空间
+          // 保留 border-bottom，与页面显示一致
+        }
+        
+        // 设置 tier-list 的顶部间距
+        const clonedTierList = clonedDoc.querySelector('.tier-list') as HTMLElement
+        if (clonedTierList) {
+          clonedTierList.style.marginTop = '0' // 移除顶部外边距，与页面显示一致
+          clonedTierList.style.paddingTop = '0'
+        }
+        
+        // 不要恢复第一个 tier-group 的 border-top（CSS :first-child 已经隐藏它）
+        // 第一个等级上面的横线是 header 的 border-bottom，已经保留了
+        const clonedTierGroups = clonedDoc.querySelectorAll('.tier-group') as NodeListOf<HTMLElement>
+        if (clonedTierGroups.length > 0) {
+          const firstGroup = clonedTierGroups[0]
+          // 保持 CSS 的 :first-child 规则（border-top: none），只移除间距
+          firstGroup.style.marginTop = '0'
+          firstGroup.style.paddingTop = '0'
+        }
+        
+        // 不要恢复第一个 tier-row-wrapper 的 border-top（CSS :first-child 已经隐藏它）
+        const clonedTierRowWrappers = clonedDoc.querySelectorAll('.tier-row-wrapper') as NodeListOf<HTMLElement>
+        if (clonedTierRowWrappers.length > 0) {
+          const firstWrapper = clonedTierRowWrappers[0]
+          // 保持 CSS 的 :first-child 规则（border-top: none），只移除间距
+          firstWrapper.style.marginTop = '0'
+          firstWrapper.style.paddingTop = '0'
+        }
+        
+        // Tight 模式：移除所有留白，确保图片紧贴内容
+        // 获取实际页面的 app 宽度，应用到克隆的 app 上
+        const originalApp = appContentRef.value as HTMLElement
+        const originalAppWidth = originalApp.offsetWidth || originalApp.scrollWidth
+        
+        const clonedApp = clonedDoc.querySelector('.app') as HTMLElement
+        if (clonedApp) {
+          clonedApp.style.padding = '0'
+          clonedApp.style.margin = '0'
+          clonedApp.style.width = `${originalAppWidth}px`
+          clonedApp.style.maxWidth = `${originalAppWidth}px`
+        }
+        
+        // 确保 tier-row-wrapper 的宽度与实际页面保持一致
+        const originalTierRowWrappers = document.querySelectorAll('.tier-row-wrapper') as NodeListOf<HTMLElement>
+        
+        clonedTierRowWrappers.forEach((clonedWrapper, index) => {
+          const originalWrapper = originalTierRowWrappers[index]
+          if (clonedWrapper && originalWrapper) {
+            const originalWidth = originalWrapper.offsetWidth || originalWrapper.scrollWidth
+            clonedWrapper.style.width = `${originalWidth}px`
+            clonedWrapper.style.maxWidth = `${originalWidth}px`
+          }
         })
       },
     })
@@ -637,6 +798,318 @@ async function handleExportImage() {
     console.error('导出图片失败:', error)
     alert('导出图片失败：' + (error instanceof Error ? error.message : '未知错误'))
     isExportingImage.value = false
+  }
+}
+
+// 根据 id 生成默认的 web 链接（用于PDF导出，与 TierRow 中的 getItemUrl 逻辑完全一致）
+function generateItemUrl(item: AnimeItem): string | null {
+  if (!item.id) return null
+  
+  // 优先使用自定义链接（与 TierRow 中的逻辑一致）
+  if (item.url) {
+    return item.url
+  }
+  
+  const idStr = String(item.id)
+  
+  // AniDB: id 格式为 "anidb_12345"
+  if (idStr.startsWith('anidb_')) {
+    const aid = idStr.replace('anidb_', '')
+    return `https://anidb.net/anime/${aid}`
+  }
+  
+  // VNDB: id 格式为 "v12345"
+  if (idStr.startsWith('v')) {
+    return `https://vndb.org/${idStr}`
+  }
+  
+  // Bangumi: id 是数字
+  if (/^\d+$/.test(idStr)) {
+    return `https://bgm.tv/subject/${idStr}`
+  }
+  
+  return null
+}
+
+// 保存为PDF（带超链接）
+async function handleExportPDF() {
+  if (!appContentRef.value) {
+    alert('无法找到要导出的内容')
+    return
+  }
+  
+  if (isExportingPDF.value || isExportingImage.value) {
+    return // 防止重复点击
+  }
+  
+  isExportingPDF.value = true
+  
+  try {
+    // 等待DOM更新
+    await nextTick()
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // 保存当前滚动位置
+    const originalScrollX = window.scrollX
+    const originalScrollY = window.scrollY
+    
+    // 滚动到顶部
+    window.scrollTo(0, 0)
+    await new Promise(resolve => setTimeout(resolve, 100))
+    
+    // 收集所有作品项的位置和链接信息
+    const itemLinks: Array<{ url: string; rect: DOMRect; item: AnimeItem }> = []
+    
+    // 遍历所有tier和items，收集链接信息
+    // 使用更可靠的方式查找DOM元素
+    tiers.value.forEach(tier => {
+      tier.rows.forEach(row => {
+        row.items.forEach((item, itemIndex) => {
+          if (item.id) {
+            const url = generateItemUrl(item)
+            if (!url) {
+              console.warn(`作品项没有URL:`, item.id, item.name)
+              return
+            }
+            
+            // 方法1: 通过 data-item-id 属性查找（在img元素上）
+            const imgElement = document.querySelector(`img[data-item-id="${item.id}"]`) as HTMLImageElement
+            let itemElement: HTMLElement | null = null
+            
+            if (imgElement) {
+              itemElement = imgElement.closest('.tier-item') as HTMLElement
+            }
+            
+            // 方法2: 如果方法1失败，尝试通过 rowId 和索引查找
+            if (!itemElement && row.id) {
+              const rowElement = document.querySelector(`[data-row-id="${row.id}"]`) as HTMLElement
+              if (rowElement) {
+                const tierItems = rowElement.querySelectorAll('.tier-item:not(.empty)')
+                if (itemIndex < tierItems.length) {
+                  itemElement = tierItems[itemIndex] as HTMLElement
+                }
+              }
+            }
+            
+            if (itemElement) {
+              const rect = itemElement.getBoundingClientRect()
+              const appRect = appContentRef.value!.getBoundingClientRect()
+              // 相对于appContent的位置
+              const relativeRect = new DOMRect(
+                rect.left - appRect.left,
+                rect.top - appRect.top,
+                rect.width,
+                rect.height
+              )
+              itemLinks.push({ url, rect: relativeRect, item })
+              console.log(`✅ 找到链接:`, item.name || item.id, url)
+            } else {
+              console.warn(`❌ 找不到DOM元素:`, item.id, item.name, row.id, itemIndex)
+            }
+          }
+        })
+      })
+    })
+    
+    const totalItems = tiers.value.reduce((sum, tier) => 
+      sum + tier.rows.reduce((rowSum, row) => rowSum + row.items.filter(item => item.id).length, 0), 0)
+    console.log(`📊 总共收集到 ${itemLinks.length} 个链接，总作品数: ${totalItems}`)
+    
+    // 使用 html2canvas 生成图片（复用现有的图片转换逻辑）
+    // 先转换图片，复用 handleExportImage 的逻辑
+    const allImages = appContentRef.value.querySelectorAll('img') as NodeListOf<HTMLImageElement>
+    const imageUrlToBase64 = new Map<string, string>()
+    
+    const conversionPromises = Array.from(allImages).map(async (img) => {
+      const originalUrl = img.getAttribute('data-original-src') || img.src
+      if (!originalUrl || originalUrl.startsWith('data:') || imageUrlToBase64.has(originalUrl)) {
+        return
+      }
+      
+      try {
+        if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+          const base64 = await convertLoadedImageToBase64(img)
+          if (base64) {
+            imageUrlToBase64.set(originalUrl, base64)
+            if (img.src && img.src !== originalUrl) {
+              imageUrlToBase64.set(img.src, base64)
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('转换图片失败:', originalUrl, error)
+      }
+    })
+    
+    await Promise.allSettled(conversionPromises)
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    const canvas = await html2canvas(appContentRef.value, {
+      scale: 2,
+      useCORS: false,
+      allowTaint: false,
+      logging: false,
+      backgroundColor: '#ffffff',
+      onclone: async (clonedDoc) => {
+        // 在克隆的文档中，将所有URL图片替换为base64
+        const clonedImages = clonedDoc.querySelectorAll('img')
+        
+        for (const clonedImg of clonedImages) {
+          const originalSrc = clonedImg.getAttribute('data-original-src') || clonedImg.getAttribute('src')
+          if (originalSrc && !originalSrc.startsWith('data:')) {
+            const base64 = imageUrlToBase64.get(originalSrc)
+            if (base64) {
+              clonedImg.setAttribute('src', base64)
+            }
+          }
+        }
+        
+        // 隐藏所有按钮，但保留标题显示（与handleExportImage相同）
+        const buttons = clonedDoc.querySelectorAll('button, .btn')
+        buttons.forEach((btn) => {
+          (btn as HTMLElement).style.display = 'none'
+        })
+        // 隐藏 header-actions 容器（包含所有按钮）
+        const headerActions = clonedDoc.querySelector('.header-actions') as HTMLElement
+        if (headerActions) {
+          headerActions.style.display = 'none'
+        }
+        // 隐藏 header-left 占位元素
+        const headerLeft = clonedDoc.querySelector('.header-left') as HTMLElement
+        if (headerLeft) {
+          headerLeft.style.display = 'none'
+        }
+        
+        // 隐藏所有模态框
+        const modals = clonedDoc.querySelectorAll('.modal-overlay, [class*="modal"]')
+        modals.forEach((modal) => {
+          (modal as HTMLElement).style.display = 'none'
+        })
+        
+        // 确保标题正常显示和居中
+        const clonedTitle = clonedDoc.querySelector('.title') as HTMLElement
+        if (clonedTitle) {
+          clonedTitle.style.display = 'block'
+          clonedTitle.style.visibility = 'visible'
+          clonedTitle.style.position = 'relative'
+          clonedTitle.style.left = 'auto'
+          clonedTitle.style.transform = 'none'
+          clonedTitle.style.textAlign = 'center'
+          clonedTitle.style.width = '100%'
+        }
+        
+        // 确保 header 正常显示
+        const clonedHeader = clonedDoc.querySelector('.header') as HTMLElement
+        if (clonedHeader) {
+          clonedHeader.style.display = 'flex'
+          clonedHeader.style.justifyContent = 'center'
+          clonedHeader.style.alignItems = 'center'
+          clonedHeader.style.marginBottom = '0'
+          clonedHeader.style.paddingBottom = '10px'
+        }
+        
+        // 设置 tier-list 的顶部间距
+        const clonedTierList = clonedDoc.querySelector('.tier-list') as HTMLElement
+        if (clonedTierList) {
+          clonedTierList.style.marginTop = '0'
+          clonedTierList.style.paddingTop = '0'
+        }
+        
+        // 处理empty slot（与handleExportImage相同）
+        const emptySlots = clonedDoc.querySelectorAll('.tier-item.empty')
+        emptySlots.forEach((slot) => {
+          const slotElement = slot as HTMLElement
+          const tierRow = slotElement.parentElement
+          if (!tierRow) return
+          
+          const allItems = Array.from(tierRow.children) as HTMLElement[]
+          const hasItems = allItems.some(item => !item.classList.contains('empty'))
+          
+          if (hasItems) {
+            slotElement.style.display = 'none'
+          } else {
+            slotElement.style.width = '100px'
+            slotElement.style.height = '173px'
+            slotElement.style.minHeight = '173px'
+            slotElement.style.maxHeight = '173px'
+            slotElement.style.opacity = '0'
+            slotElement.style.pointerEvents = 'none'
+            slotElement.style.border = 'none'
+            slotElement.style.borderWidth = '0'
+            // 隐藏内部内容（占位符文字和图标）
+            const placeholder = slotElement.querySelector('.item-placeholder')
+            if (placeholder) {
+              (placeholder as HTMLElement).style.display = 'none'
+            }
+            const placeholderText = slotElement.querySelector('.placeholder-text')
+            if (placeholderText) {
+              (placeholderText as HTMLElement).style.display = 'none'
+            }
+          }
+        })
+      },
+    })
+    
+    // 恢复滚动位置
+    window.scrollTo(originalScrollX, originalScrollY)
+    
+    // 计算PDF尺寸（A4比例，但根据内容调整宽度）
+    // 注意：canvas 使用了 scale: 2，所以 canvas 尺寸是实际 DOM 的 2 倍
+    const canvasWidth = canvas.width
+    const canvasHeight = canvas.height
+    const htmlScale = 2 // html2canvas 的 scale 参数
+    const actualDomWidth = canvasWidth / htmlScale // 实际 DOM 宽度
+    const actualDomHeight = canvasHeight / htmlScale // 实际 DOM 高度
+    
+    const pdfWidth = 210 // A4宽度（mm）
+    const pdfHeight = (canvasHeight / canvasWidth) * pdfWidth // 按比例计算高度
+    
+    // 创建PDF
+    const pdf = new jsPDF({
+      orientation: pdfHeight > 297 ? 'portrait' : 'portrait',
+      unit: 'mm',
+      format: [pdfWidth, Math.max(pdfHeight, 297)], // 至少A4高度
+    })
+    
+    // 将canvas转换为图片并添加到PDF
+    const imgData = canvas.toDataURL('image/png', 1.0)
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST')
+    
+    // 为每个作品项添加超链接
+    // 需要将 DOM 坐标转换为 PDF 坐标（mm）
+    // rect 是基于实际 DOM 的像素坐标，需要转换为 canvas 坐标（考虑 scale），然后再转换为 PDF 坐标
+    const scaleX = pdfWidth / canvasWidth // PDF mm / canvas pixels
+    const scaleY = pdfHeight / canvasHeight // PDF mm / canvas pixels
+    
+    itemLinks.forEach(({ url, rect, item }) => {
+      // rect 是基于实际 DOM 的像素坐标
+      // 转换为 canvas 坐标（考虑 scale: 2）
+      const canvasX = rect.left * htmlScale
+      const canvasY = rect.top * htmlScale
+      const canvasW = rect.width * htmlScale
+      const canvasH = rect.height * htmlScale
+      
+      // 转换为 PDF 坐标（mm）
+      const x = canvasX * scaleX
+      const y = canvasY * scaleY
+      const w = canvasW * scaleX
+      const h = canvasH * scaleY
+      
+      // 添加超链接
+      pdf.link(x, y, w, h, { url })
+      console.log(`🔗 添加链接:`, item.name || item.id, url, `PDF坐标: (${x.toFixed(2)}, ${y.toFixed(2)}, ${w.toFixed(2)}, ${h.toFixed(2)})`)
+    })
+    
+    console.log(`📄 PDF尺寸: ${pdfWidth}x${pdfHeight}mm, Canvas尺寸: ${canvasWidth}x${canvasHeight}px (scale=${htmlScale})`)
+    
+    // 保存PDF
+    pdf.save(`tier-list-${new Date().toISOString().split('T')[0]}.pdf`)
+    
+    isExportingPDF.value = false
+  } catch (error) {
+    console.error('导出PDF失败:', error)
+    alert('导出PDF失败：' + (error instanceof Error ? error.message : '未知错误'))
+    isExportingPDF.value = false
   }
 }
 
@@ -780,6 +1253,7 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
 <template>
   <div class="app" ref="appContentRef">
     <header class="header">
+      <div class="header-left"></div>
       <h1 
         class="title" 
         contenteditable="true"
@@ -796,14 +1270,22 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
           class="btn btn-secondary" 
           @click="handleExportImage" 
           title="保存为高清图片"
-          :disabled="isExportingImage"
+          :disabled="isExportingImage || isExportingPDF"
         >
           {{ isExportingImage ? '准备中...' : '保存图片' }}
         </button>
         <button 
-          v-if="isExportingImage" 
           class="btn btn-secondary" 
-          @click="isExportingImage = false" 
+          @click="handleExportPDF" 
+          title="保存为PDF（保留超链接）"
+          :disabled="isExportingImage || isExportingPDF"
+        >
+          {{ isExportingPDF ? '准备中...' : '保存PDF' }}
+        </button>
+        <button 
+          v-if="isExportingImage || isExportingPDF" 
+          class="btn btn-secondary" 
+          @click="isExportingImage = false; isExportingPDF = false" 
           title="恢复页面显示"
         >
           恢复显示
@@ -828,10 +1310,12 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
     </header>
 
     <TierList
+      ref="tierListRef"
       :tiers="tiers"
       :tier-configs="tierConfigs"
       :is-dragging="isDragging"
       :is-exporting-image="isExportingImage"
+      :duplicate-item-ids="duplicateItemIds"
       @add-item="handleAddItem"
       @add-row="handleAddRow"
       @delete-row="handleDeleteRow"
@@ -859,6 +1343,7 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
     <EditItemModal
       v-if="showEditItem"
       :item="currentEditItem"
+      :is-long-press-triggered="isLongPressEdit"
       @close="handleCloseEditItem"
       @save="handleSaveEditItem"
     />
@@ -875,9 +1360,14 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
-  padding-bottom: 20px;
+  margin-bottom: 0;
+  padding-bottom: 10px;
   border-bottom: 2px solid #000000;
+  position: relative;
+}
+
+.header-left {
+  flex: 1;
 }
 
 .title {
@@ -888,6 +1378,12 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
   cursor: text;
   outline: none;
   transition: opacity 0.2s;
+  text-align: center;
+  flex: 1;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: fit-content;
 }
 
 .title:hover {

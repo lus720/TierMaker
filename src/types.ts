@@ -7,6 +7,8 @@ export interface AnimeItem {
   date?: string
   score?: number
   url?: string // 自定义链接
+  originalUrl?: string // 添加作品时的默认web链接
+  originalImage?: string // 添加作品时的默认封面图链接
 }
 
 // 评分等级配置
@@ -15,6 +17,7 @@ export interface TierConfig {
   label: string
   color: string
   order: number
+  fontSize?: number // 字号（像素），默认 32
 }
 
 // Tier 行数据

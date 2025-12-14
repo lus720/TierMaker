@@ -18,6 +18,8 @@ const error = ref('')
 const offset = ref(0)
 const page = ref(1)
 const hasMore = ref(true)
+const modalContentRef = ref<HTMLElement | null>(null)
+const mouseDownInside = ref(false)
 
 // 防抖搜索
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
@@ -135,6 +137,31 @@ async function loadMore() {
   }
 }
 
+// 根据 id 生成默认的 web 链接
+function generateDefaultUrl(id: number | string): string | undefined {
+  if (!id) return undefined
+  
+  const idStr = String(id)
+  
+  // AniDB: id 格式为 "anidb_12345"
+  if (idStr.startsWith('anidb_')) {
+    const aid = idStr.replace('anidb_', '')
+    return `https://anidb.net/anime/${aid}`
+  }
+  
+  // VNDB: id 格式为 "v12345"
+  if (idStr.startsWith('v')) {
+    return `https://vndb.org/${idStr}`
+  }
+  
+  // Bangumi: id 是数字
+  if (/^\d+$/.test(idStr)) {
+    return `https://bgm.tv/subject/${idStr}`
+  }
+  
+  return undefined
+}
+
 function handleSelect(result: SearchResult) {
   // 获取图片 URL（按优先级）
   const imageUrl = result.images.large || result.images.medium || result.images.grid || result.images.small || ''
@@ -151,6 +178,9 @@ function handleSelect(result: SearchResult) {
     })
   }
   
+  // 生成默认的 web 链接
+  const defaultUrl = generateDefaultUrl(result.id)
+  
   const anime: AnimeItem = {
     id: result.id, // 保持原始类型（number 或 string）
     name: result.name,
@@ -158,6 +188,8 @@ function handleSelect(result: SearchResult) {
     image: imageUrl,
     date: result.date || undefined,
     score: result.score,
+    originalUrl: defaultUrl, // 保存默认 web 链接
+    originalImage: imageUrl, // 保存默认封面图链接
   }
   
   // 调试：输出最终创建的 AnimeItem
@@ -170,6 +202,24 @@ function handleSelect(result: SearchResult) {
 
 function handleClose() {
   emit('close')
+}
+
+function isInsideModalContent(x: number, y: number): boolean {
+  if (!modalContentRef.value) return false
+  const rect = modalContentRef.value.getBoundingClientRect()
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+}
+
+function handleMouseDown(event: MouseEvent) {
+  mouseDownInside.value = isInsideModalContent(event.clientX, event.clientY)
+}
+
+function handleMouseUp(event: MouseEvent) {
+  const mouseUpInside = isInsideModalContent(event.clientX, event.clientY)
+  if (!mouseDownInside.value && !mouseUpInside) {
+    emit('close')
+  }
+  mouseDownInside.value = false
 }
 
 function getPlaceholder() {
@@ -316,8 +366,8 @@ function handleImageError(event: Event) {
 </script>
 
 <template>
-  <div class="modal-overlay" @click="handleClose">
-    <div class="modal-content" @click.stop>
+  <div class="modal-overlay" @mousedown="handleMouseDown" @mouseup="handleMouseUp">
+    <div class="modal-content" ref="modalContentRef" @click.stop>
       <div class="modal-header">
         <h2 class="modal-title">{{ getTitle() }}</h2>
         <button class="close-btn" @click="handleClose">×</button>

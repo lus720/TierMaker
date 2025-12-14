@@ -4,6 +4,7 @@ import type { AnimeItem } from '../types'
 
 const props = defineProps<{
   item: AnimeItem | null
+  isLongPressTriggered?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -17,8 +18,36 @@ const imageUrl = ref('')
 const customUrl = ref('')
 const imageFile = ref<File | null>(null)
 const imagePreview = ref<string>('')
+const modalContentRef = ref<HTMLElement | null>(null)
+const mouseDownInside = ref(false)
+const mouseDownTime = ref<number>(0)
+const hasHandledLongPressMouseUp = ref(false)
 
-// 监听 item 变化，初始化表单
+// 根据 id 生成默认的 web 链接
+function generateDefaultUrl(id: number | string): string | undefined {
+  if (!id) return undefined
+  
+  const idStr = String(id)
+  
+  // AniDB: id 格式为 "anidb_12345"
+  if (idStr.startsWith('anidb_')) {
+    const aid = idStr.replace('anidb_', '')
+    return `https://anidb.net/anime/${aid}`
+  }
+  
+  // VNDB: id 格式为 "v12345"
+  if (idStr.startsWith('v')) {
+    return `https://vndb.org/${idStr}`
+  }
+  
+  // Bangumi: id 是数字
+  if (/^\d+$/.test(idStr)) {
+    return `https://bgm.tv/subject/${idStr}`
+  }
+  
+  return undefined
+}
+
 watch(() => props.item, (newItem) => {
   if (newItem) {
     name.value = newItem.name || ''
@@ -30,7 +59,13 @@ watch(() => props.item, (newItem) => {
   }
 }, { immediate: true })
 
-// 处理文件选择
+watch(() => props.isLongPressTriggered, (value) => {
+  // 当长按标志变化时，重置处理标志
+  if (value) {
+    hasHandledLongPressMouseUp.value = false
+  }
+}, { immediate: true })
+
 function handleFileSelect(e: Event) {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
@@ -49,59 +84,103 @@ function handleFileSelect(e: Event) {
   }
 }
 
-// 处理图片 URL 输入
 function handleImageUrlChange() {
   if (imageUrl.value && !imageFile.value) {
     imagePreview.value = imageUrl.value
   }
 }
 
-// 保存
 function handleSave() {
   if (!props.item) return
   
+  // 对于旧数据，如果没有originalUrl或originalImage，使用当前值作为默认值
+  let originalUrl = props.item.originalUrl
+  let originalImage = props.item.originalImage
+  
+  if (!originalUrl) {
+    // 如果当前有自定义url，使用它；否则生成默认url
+    originalUrl = props.item.url || generateDefaultUrl(props.item.id)
+  }
+  
+  if (!originalImage) {
+    // 使用当前image作为原始值
+    originalImage = props.item.image
+  }
+  
   // 确定最终图片 URL
-  let finalImageUrl = imageUrl.value
+  let finalImageUrl = imageUrl.value.trim()
   if (imageFile.value) {
     // 如果有文件，使用文件预览 URL（base64 data URL）
     finalImageUrl = imagePreview.value
+  } else if (!finalImageUrl) {
+    // 如果用户清空了图片 URL 且没有上传新文件，使用原始默认封面图
+    finalImageUrl = originalImage || ''
   }
   
-  if (!finalImageUrl && !imagePreview.value) {
+  if (!finalImageUrl) {
     alert('请设置图片（URL 或上传文件）')
     return
   }
   
-  // 如果用户清空了图片 URL 但没有上传新文件，使用预览中的图片
-  if (!finalImageUrl && imagePreview.value) {
-    finalImageUrl = imagePreview.value
+  // 确定最终 web 链接
+  let finalUrl = customUrl.value.trim()
+  if (!finalUrl) {
+    // 如果用户清空了自定义链接，使用原始默认链接
+    finalUrl = originalUrl || undefined
   }
   
   const updatedItem: AnimeItem = {
     ...props.item,
     name: name.value.trim() || props.item.name,
     name_cn: nameCn.value.trim() || undefined,
-    image: finalImageUrl || imagePreview.value || props.item.image,
-    url: customUrl.value.trim() || undefined,
+    image: finalImageUrl,
+    url: finalUrl,
+    // 保存原始默认值（如果是旧数据，现在也会被设置）
+    originalUrl: originalUrl,
+    originalImage: originalImage,
   }
   
   emit('save', updatedItem)
 }
 
-// 取消
 function handleCancel() {
   emit('close')
 }
 
-// 清除自定义链接
 function clearCustomUrl() {
   customUrl.value = ''
+}
+
+function isInsideModalContent(x: number, y: number): boolean {
+  if (!modalContentRef.value) return false
+  const rect = modalContentRef.value.getBoundingClientRect()
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+}
+
+function handleMouseDown(event: MouseEvent) {
+  mouseDownInside.value = isInsideModalContent(event.clientX, event.clientY)
+  mouseDownTime.value = Date.now()
+}
+
+function handleMouseUp(event: MouseEvent) {
+  // 如果是长按触发的编辑，且还没有处理过mouseup，绝对不触发退出
+  if (props.isLongPressTriggered && !hasHandledLongPressMouseUp.value) {
+    mouseDownInside.value = false
+    hasHandledLongPressMouseUp.value = true
+    return
+  }
+  
+  const mouseUpInside = isInsideModalContent(event.clientX, event.clientY)
+  if (!mouseDownInside.value && !mouseUpInside) {
+    emit('close')
+  }
+  mouseDownInside.value = false
 }
 </script>
 
 <template>
-  <div v-if="item" class="modal-overlay" @click.self="handleCancel">
-    <div class="modal-content">
+  <div v-if="item" class="modal-overlay" @mousedown="handleMouseDown" @mouseup="handleMouseUp">
+    <div class="modal-content" ref="modalContentRef">
       <div class="modal-header">
         <h2>编辑作品</h2>
         <button class="close-btn" @click="handleCancel">×</button>

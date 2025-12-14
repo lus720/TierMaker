@@ -14,8 +14,9 @@ const emit = defineEmits<{
 
 const localConfigs = ref<TierConfig[]>([])
 const bgmToken = ref('')
-// 临时存储输入框的值，避免输入过程中触发响应式更新
 const inputValues = ref<Record<number, string>>({})
+const modalContentRef = ref<HTMLElement | null>(null)
+const mouseDownInside = ref(false)
 
 // 预设颜色选项
 const presetColors = [
@@ -30,27 +31,26 @@ const presetColors = [
 
 watch(() => props.configs, (newConfigs) => {
   const newLocalConfigs = JSON.parse(JSON.stringify(newConfigs))
-  // 为每个配置添加内部唯一 ID（用于 key，不会改变）
   newLocalConfigs.forEach((config: any, index: number) => {
-    // 如果已有内部 ID，保持不变；否则创建新的
     const existingConfig = localConfigs.value.find(c => c.id === config.id && c.order === config.order)
     if (existingConfig && (existingConfig as any)._internalId) {
       (config as any)._internalId = (existingConfig as any)._internalId
     } else {
       (config as any)._internalId = `config-${Date.now()}-${index}`
     }
-    // 同步 label
     if (!config.label || config.label !== config.id) {
       config.label = config.id
     }
-    // 初始化输入框的临时值
+    // 如果没有字号，设置默认值
+    if (config.fontSize === undefined || config.fontSize === null) {
+      config.fontSize = 32
+    }
     inputValues.value[index] = config.id
   })
   localConfigs.value = newLocalConfigs
 }, { immediate: true })
 
 onMounted(() => {
-  // 加载用户自定义的 Token
   const savedToken = loadBgmToken()
   if (savedToken) {
     bgmToken.value = savedToken
@@ -58,65 +58,89 @@ onMounted(() => {
 })
 
 function addTier() {
-  const newId = String.fromCharCode(65 + localConfigs.value.length) // A, B, C...
+  const newId = String.fromCharCode(65 + localConfigs.value.length)
   const newConfig: any = {
     id: newId,
-    label: newId, // label 会自动从 id 生成（显示时重复）
+    label: newId,
     color: '#000000',
     order: localConfigs.value.length,
+    fontSize: 32,
+    _internalId: `config-${Date.now()}-${localConfigs.value.length}`,
   }
-  // 添加内部唯一 ID
-  newConfig._internalId = `config-${Date.now()}-${localConfigs.value.length}`
   localConfigs.value.push(newConfig)
 }
 
 function removeTier(index: number) {
   if (localConfigs.value.length > 1) {
     localConfigs.value.splice(index, 1)
-    // 重新排序
     localConfigs.value.forEach((config, i) => {
       config.order = i
     })
   }
 }
 
+// 交换两个配置并同步 inputValues
+function swapConfigs(index1: number, index2: number) {
+  // 交换配置
+  ;[localConfigs.value[index1], localConfigs.value[index2]] = [
+    localConfigs.value[index2],
+    localConfigs.value[index1],
+  ]
+  
+  // 交换输入值
+  const value1 = inputValues.value[index1] ?? localConfigs.value[index1].id
+  const value2 = inputValues.value[index2] ?? localConfigs.value[index2].id
+  inputValues.value[index1] = value2
+  inputValues.value[index2] = value1
+  
+  // 更新 order
+  localConfigs.value[index1].order = index1
+  localConfigs.value[index2].order = index2
+}
+
 function moveUp(index: number) {
+  // 当前等级条向上移动：与上一个交换
   if (index > 0) {
-    const temp = localConfigs.value[index]
-    localConfigs.value[index] = localConfigs.value[index - 1]
-    localConfigs.value[index - 1] = temp
-    localConfigs.value[index].order = index
-    localConfigs.value[index - 1].order = index - 1
+    swapConfigs(index - 1, index)
   }
 }
 
 function moveDown(index: number) {
+  // 当前等级条向下移动：与下一个交换
   if (index < localConfigs.value.length - 1) {
-    const temp = localConfigs.value[index]
-    localConfigs.value[index] = localConfigs.value[index + 1]
-    localConfigs.value[index + 1] = temp
-    localConfigs.value[index].order = index
-    localConfigs.value[index + 1].order = index + 1
+    swapConfigs(index, index + 1)
   }
 }
 
 function handleSave() {
   emit('update', localConfigs.value)
-  // 保存用户自定义的 Token（如果为空则清除）
   saveBgmToken(bgmToken.value || null)
   emit('close')
 }
 
-function handleClose() {
-  emit('close')
+
+function isInsideModalContent(x: number, y: number): boolean {
+  if (!modalContentRef.value) return false
+  const rect = modalContentRef.value.getBoundingClientRect()
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
 }
 
-// 处理输入框输入事件（不直接更新 config.id，避免触发响应式更新）
+function handleMouseDown(event: MouseEvent) {
+  mouseDownInside.value = isInsideModalContent(event.clientX, event.clientY)
+}
+
+function handleMouseUp(event: MouseEvent) {
+  const mouseUpInside = isInsideModalContent(event.clientX, event.clientY)
+  if (!mouseDownInside.value && !mouseUpInside) {
+    emit('close')
+  }
+  mouseDownInside.value = false
+}
+
 function handleTierIdInput(index: number, value: string) {
   inputValues.value[index] = value
 }
 
-// 在失去焦点时更新 config.id 和 label
 function handleTierIdBlur(config: TierConfig, index: number) {
   const newValue = inputValues.value[index] || config.id
   config.id = newValue
@@ -125,11 +149,11 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 </script>
 
 <template>
-  <div class="modal-overlay" @click="handleClose">
-    <div class="modal-content" @click.stop>
+  <div class="modal-overlay" @mousedown="handleMouseDown" @mouseup="handleMouseUp">
+    <div class="modal-content" ref="modalContentRef">
       <div class="modal-header">
         <h2 class="modal-title">设置</h2>
-        <button class="close-btn" @click="handleClose">×</button>
+        <button class="close-btn" @click="emit('close')">×</button>
       </div>
       
       <div class="config-section">
@@ -163,11 +187,12 @@ function handleTierIdBlur(config: TierConfig, index: number) {
       </div>
       
       <div class="config-list">
-        <div
-          v-for="(config, index) in localConfigs"
-          :key="(config as any)._internalId || `config-${index}`"
-          class="config-item"
-        >
+        <TransitionGroup name="list" tag="div">
+          <div
+            v-for="(config, index) in localConfigs"
+            :key="(config as any)._internalId || `config-${index}`"
+            class="config-item"
+          >
           <div class="config-controls">
             <button
               class="move-btn"
@@ -186,12 +211,21 @@ function handleTierIdBlur(config: TierConfig, index: number) {
           </div>
           
           <input
-            :value="inputValues[index] !== undefined ? inputValues[index] : config.id"
+            :value="inputValues[index] ?? config.id"
             type="text"
             class="config-input"
             placeholder="等级（如 S、SS、A、EX）"
             @input="(e) => handleTierIdInput(index, (e.target as HTMLInputElement).value)"
             @blur="handleTierIdBlur(config, index)"
+          />
+          <input
+            v-model.number="config.fontSize"
+            type="number"
+            class="config-fontsize"
+            placeholder="字号"
+            min="12"
+            max="72"
+            step="1"
           />
           <div class="color-selector">
             <input
@@ -219,13 +253,14 @@ function handleTierIdBlur(config: TierConfig, index: number) {
           >
             删除
           </button>
-        </div>
+          </div>
+        </TransitionGroup>
       </div>
       
       <div class="modal-footer">
         <button class="add-btn" @click="addTier">添加等级</button>
         <div class="footer-actions">
-          <button class="btn btn-cancel" @click="handleClose">取消</button>
+          <button class="btn btn-cancel" @click="emit('close')">取消</button>
           <button class="btn btn-save" @click="handleSave">保存</button>
         </div>
       </div>
@@ -375,6 +410,31 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   border: 2px solid #000000;
 }
 
+/* TransitionGroup 动画 */
+.list-move {
+  transition: transform 0.3s ease;
+}
+
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.3s ease;
+}
+
+.list-enter-from {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.list-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.list-leave-active {
+  position: absolute;
+  width: calc(100% - 40px);
+}
+
 .config-controls {
   display: flex;
   flex-direction: column;
@@ -406,6 +466,14 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   padding: 8px;
   border: 2px solid #000000;
   font-size: 14px;
+}
+
+.config-fontsize {
+  width: 80px;
+  padding: 8px;
+  border: 2px solid #000000;
+  font-size: 14px;
+  text-align: center;
 }
 
 .color-selector {

@@ -9,12 +9,13 @@ const props = defineProps<{
   rowId: string
   isDragging?: boolean
   isExportingImage?: boolean
+  duplicateItemIds?: Set<string | number>
 }>()
 
 const emit = defineEmits<{
   'add-item': [index: number]
   'delete-item': [index: number]
-  'edit-item': [item: AnimeItem, index: number]
+  'edit-item': [item: AnimeItem, index: number, isLongPress?: boolean]
   'move-item': [data: {
     fromRowId: string
     toRowId: string
@@ -31,12 +32,10 @@ const rowElement = ref<HTMLElement | null>(null)
 let sortableInstance: Sortable | null = null
 
 const displayItems = computed(() => {
-  // 始终显示至少一个空位
+  // 始终显示至少一个空位（包括导出图片时，以保持高度统一）
   const items = [...props.row.items]
-  // 拖动时或导出图片时隐藏空位（使用 props 中的全局状态）
-  if (!props.isDragging && !props.isExportingImage) {
-    items.push({} as AnimeItem) // 添加空位用于添加新项
-  }
+  // 始终添加空位，即使在导出图片时也保留（在onclone中会处理）
+  items.push({} as AnimeItem) // 添加空位用于添加新项
   return items
 })
 
@@ -61,28 +60,41 @@ onMounted(() => {
       invertSwap: false, // 不反转交换
       preventOnFilter: true, // 过滤的元素阻止默认行为
       onMove: (evt) => {
-        // 允许移动到任何容器（包括其他等级）
         const related = evt.related as HTMLElement
-        const dragged = evt.dragged as HTMLElement
         const to = evt.to as HTMLElement
         
-        console.log('onMove:', {
-          dragged: dragged.className,
-          related: related?.className,
-          to: to.getAttribute('data-row-id'),
-          willInsertAfter: evt.willInsertAfter,
-        })
+        if (!related || !to) {
+          return true
+        }
         
+        // 如果 related 是空位
+        if (related.classList.contains('empty')) {
+          // 如果尝试插入到空位之后，不允许
+          if (evt.willInsertAfter) {
+            return false
+          }
+          // 如果插入到空位之前，允许（预览位置会显示在空位之前）
+          return true
+        }
+        
+        // 允许移动到任何容器（包括其他等级）
         return true
+      },
+      onChange: (evt) => {
+        // 在拖动过程中，确保空位始终在最后
+        const to = evt.to as HTMLElement
+        if (to) {
+          ensureEmptySlotLast(to)
+        }
       },
       onStart: (evt) => {
         // 拖动开始时，立刻终止所有长按并恢复到正常状态
         emit('drag-start')
         
-        console.log('onStart:', {
-          item: evt.item.className,
-          from: (evt.from as HTMLElement).getAttribute('data-row-id'),
-          currentRowId: props.rowId,
+        // 确保所有容器中的空位都在最后（包括当前容器和其他容器）
+        const allTierRows = document.querySelectorAll('[data-row-id]')
+        allTierRows.forEach(row => {
+          ensureEmptySlotLast(row as HTMLElement)
         })
         
         // 清除所有项目的长按状态
@@ -108,21 +120,8 @@ onMounted(() => {
         const fromRowId = fromElement.getAttribute('data-row-id')
         const toRowId = toElement.getAttribute('data-row-id')
         
-        // 检查是否是真正的跨容器拖动（fromElement 和 toElement 是不同的元素）
+        // 检查是否是真正的跨容器拖动
         const isCrossContainer = fromElement !== toElement
-        
-        console.log('TierRow onEnd:', {
-          oldIndex,
-          newIndex,
-          fromRowId,
-          toRowId,
-          currentRowId: props.rowId,
-          isFromRow: fromRowId === props.rowId,
-          isToRow: toRowId === props.rowId,
-          isCrossContainer,
-          fromElementSame: fromElement === rowElement.value,
-          toElementSame: toElement === rowElement.value,
-        })
         
         if (oldIndex === undefined || newIndex === undefined) {
           // 确保空位在最后
@@ -133,7 +132,7 @@ onMounted(() => {
           return
         }
         
-        // 如果是跨容器拖动（fromElement !== toElement）
+        // 如果是跨容器拖动
         if (isCrossContainer && fromRowId && toRowId) {
           // 只在源行的 onEnd 中处理跨行拖动
           if (fromRowId === props.rowId) {
@@ -141,14 +140,6 @@ onMounted(() => {
             const fromItems = props.row.items
             if (oldIndex >= 0 && oldIndex < fromItems.length) {
               const movedItem = fromItems[oldIndex]
-              
-              console.log('触发跨行拖动事件:', {
-                fromRowId,
-                toRowId,
-                fromIndex: oldIndex,
-                toIndex: newIndex,
-                item: movedItem,
-              })
               
               // 触发跨行拖动事件
               emit('move-item', {
@@ -193,13 +184,13 @@ onBeforeUnmount(() => {
 // 确保空位在最后
 function ensureEmptySlotLast(container: HTMLElement) {
   const items = Array.from(container.children) as HTMLElement[]
-  const emptySlot = items.find(item => item.classList.contains('empty'))
+  const emptySlots = items.filter(item => item.classList.contains('empty'))
   const nonEmptyItems = items.filter(item => !item.classList.contains('empty'))
   
-  if (emptySlot && nonEmptyItems.length > 0) {
-    // 将空位移到最后
+  // 将所有空位移到最后
+  emptySlots.forEach(emptySlot => {
     container.appendChild(emptySlot)
-  }
+  })
 }
 
 function handleItemClick(index: number) {
@@ -217,6 +208,30 @@ function handleItemClick(index: number) {
 function handleItemDelete(index: number, e: Event) {
   e.stopPropagation()
   emit('delete-item', index)
+}
+
+function handleImageLoad(event: Event) {
+  const img = event.target as HTMLImageElement
+  console.log('✅ 图片加载成功:', img.src)
+  
+  // 检查图片是否需要裁剪
+  // 按3:4比例计算，宽度100px对应高度133.33px
+  const targetHeight = 133.33
+  const naturalAspectRatio = img.naturalWidth / img.naturalHeight
+  const targetAspectRatio = 3 / 4 // 0.75
+  
+  if (naturalAspectRatio < targetAspectRatio) {
+    // 图片更高（或更窄），按100px宽度缩放后高度会超过133px，需要裁剪
+    img.style.objectFit = 'cover'
+    img.style.width = '100px'
+    img.style.height = '133px'
+  } else {
+    // 图片更宽（或更矮），按100px宽度缩放后高度不超过133px，不拉伸保持原样
+    img.style.objectFit = 'contain'
+    img.style.width = '100px'
+    img.style.height = 'auto'
+    img.style.maxHeight = '133px'
+  }
 }
 
 // 处理图片加载错误
@@ -382,8 +397,8 @@ function startLongPress(item: AnimeItem, index: number, _e: MouseEvent | TouchEv
       justTriggeredLongPress.value.delete(index)
     }, 100) // 100ms 后清除标志
     
-    // 触发编辑事件
-    emit('edit-item', item, index)
+    // 触发编辑事件，传递长按标志
+    emit('edit-item', item, index, true) // 第三个参数表示是长按触发的
   }, LONG_PRESS_DURATION)
   
   longPressTimers.value.set(index, timer)
@@ -466,7 +481,10 @@ function getLongPressProgress(index: number): number {
       v-for="(item, index) in displayItems"
       :key="`${item.id || 'empty'}-${index}`"
       class="tier-item"
-      :class="{ 'empty': !item.id }"
+      :class="{ 
+        'empty': !item.id,
+        'duplicate': item.id && props.duplicateItemIds?.has(item.id)
+      }"
       @click="handleItemClick(index)"
       @mousedown="handleMouseDown(item, index, $event)"
       @mouseup="handleMouseUp(index, $event)"
@@ -475,22 +493,23 @@ function getLongPressProgress(index: number): number {
       @touchend="handleTouchEnd(index, $event)"
       @touchcancel="handleTouchCancel(index)"
     >
-      <img
-        v-if="item.image"
-        :src="item.image"
-        :data-original-src="item.image"
-        :data-item-id="item.id || ''"
-        :alt="item.name || ''"
-        class="item-image"
-        :class="{ 'clickable': getItemUrl(item) }"
-        :crossorigin="isAnidbImage(item.image) ? 'anonymous' : undefined"
-        :referrerpolicy="isAnidbImage(item.image) ? 'no-referrer' : undefined"
-        @click="handleImageClick(item, $event)"
-        @contextmenu="handleImageClick(item, $event)"
-        @error="handleImageError"
-        @load="() => console.log('✅ 图片加载成功:', item.image)"
-        :title="getItemUrl(item) ? '双击或 Ctrl+点击或右键点击跳转到详情页' : ''"
-      />
+      <div v-if="item.image" class="item-image-container">
+        <img
+          :src="item.image"
+          :data-original-src="item.image"
+          :data-item-id="item.id || ''"
+          :alt="item.name || ''"
+          class="item-image"
+          :class="{ 'clickable': getItemUrl(item) }"
+          :crossorigin="isAnidbImage(item.image) ? 'anonymous' : undefined"
+          :referrerpolicy="isAnidbImage(item.image) ? 'no-referrer' : undefined"
+          @click="handleImageClick(item, $event)"
+          @contextmenu="handleImageClick(item, $event)"
+          @error="handleImageError"
+          @load="handleImageLoad"
+          :title="getItemUrl(item) ? '双击或 Ctrl+点击或右键点击跳转到详情页' : ''"
+        />
+      </div>
       <div v-else class="item-placeholder">
         <span class="placeholder-text">+</span>
       </div>
@@ -542,7 +561,7 @@ function getLongPressProgress(index: number): number {
 .tier-item {
   position: relative;
   width: 100px;
-  height: 140px;
+  height: 173px;
   border: none;
   background: #ffffff;
   cursor: pointer;
@@ -558,6 +577,13 @@ function getLongPressProgress(index: number): number {
 .tier-item.empty {
   border: 2px dashed #cccccc;
   cursor: pointer;
+  order: 9999; /* 确保空位始终在最后 */
+}
+
+/* 重复条目的红色高亮 */
+.tier-item.duplicate {
+  border: 3px solid #ff0000 !important;
+  box-shadow: 0 0 8px rgba(255, 0, 0, 0.5);
 }
 
 /* 拖动时原位置的半透明样式 */
@@ -582,10 +608,21 @@ function getLongPressProgress(index: number): number {
   cursor: grabbing;
 }
 
+.item-image-container {
+  width: 100px; /* 固定宽度 */
+  height: 133px; /* 3:4 比例：100 * 4 / 3 = 133.33px */
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+}
+
 .item-image {
-  width: 100%;
-  height: 100px;
-  object-fit: cover;
+  width: 100px; /* 固定宽度 */
+  height: auto;
+  object-fit: contain; /* 默认不拉伸，保持原样 */
+  object-position: center;
   display: block;
 }
 
@@ -599,7 +636,7 @@ function getLongPressProgress(index: number): number {
 
 .item-placeholder {
   width: 100%;
-  height: 100px;
+  height: 133px;
   display: flex;
   align-items: center;
   justify-content: center;

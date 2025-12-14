@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// computed 未使用，但保留以备将来使用
+import { ref, onMounted, watch, watchEffect, nextTick } from 'vue'
 import TierRow from './TierRow.vue'
 import type { Tier, TierConfig, AnimeItem } from '../types'
 
@@ -8,14 +8,20 @@ const props = defineProps<{
   tierConfigs: TierConfig[]
   isDragging?: boolean
   isExportingImage?: boolean
+  duplicateItemIds?: Set<string | number>
 }>()
+
+// 暴露方法给父组件调用
+defineExpose({
+  updateLabelWidth: () => updateMaxLabelWidth()
+})
 
 const emit = defineEmits<{
   'add-item': [tierId: string, rowId: string, index: number]
   'add-row': [tierId: string]
   'delete-row': [tierId: string, rowId: string]
   'delete-item': [tierId: string, rowId: string, index: number]
-  'edit-item': [tierId: string, rowId: string, item: AnimeItem, index: number]
+  'edit-item': [tierId: string, rowId: string, item: AnimeItem, index: number, isLongPress?: boolean]
   'move-item': [data: {
     fromTierId: string
     fromRowId: string
@@ -30,9 +36,86 @@ const emit = defineEmits<{
   'drag-end': []
 }>()
 
+const maxLabelWidth = ref<number>(0)
+
 function getTierConfig(tierId: string): TierConfig | undefined {
   return props.tierConfigs.find(c => c.id === tierId)
 }
+
+function updateMaxLabelWidth() {
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      // 获取所有等级的配置（去重）
+      const uniqueTierIds = [...new Set(props.tiers.map(t => t.id))]
+      if (uniqueTierIds.length === 0) return
+      
+      // 获取一个实际的标签元素作为样式参考
+      const sampleLabel = document.querySelector<HTMLElement>('.tier-label')
+      const sampleText = document.querySelector<HTMLElement>('.tier-label-text')
+      if (!sampleLabel || !sampleText) {
+        // 如果 DOM 还没渲染，延迟重试
+        setTimeout(updateMaxLabelWidth, 50)
+        return
+      }
+      
+      // 获取实际的样式值
+      const containerStyle = window.getComputedStyle(sampleLabel)
+      const textStyle = window.getComputedStyle(sampleText)
+      const paddingLeft = parseFloat(containerStyle.paddingLeft) || 10
+      const paddingRight = parseFloat(containerStyle.paddingRight) || 10
+      const padding = paddingLeft + paddingRight
+      
+      // 创建临时文本元素来测量文本宽度
+      const tempText = document.createElement('span')
+      tempText.className = 'tier-label-text'
+      // 应用相同的样式来准确测量文本宽度
+      tempText.style.position = 'absolute'
+      tempText.style.visibility = 'hidden'
+      tempText.style.whiteSpace = 'nowrap'
+      tempText.style.fontSize = textStyle.fontSize
+      tempText.style.fontWeight = textStyle.fontWeight
+      tempText.style.fontFamily = textStyle.fontFamily
+      tempText.style.letterSpacing = textStyle.letterSpacing
+      document.body.appendChild(tempText)
+      
+      let maxWidth = 0
+      
+      // 测量每个等级标签文本的宽度
+      uniqueTierIds.forEach(tierId => {
+        const config = props.tierConfigs.find(c => c.id === tierId)
+        const labelText = config?.label || tierId
+        const fontSize = config?.fontSize || 32
+        
+        // 应用该等级的字号
+        tempText.style.fontSize = `${fontSize}px`
+        
+        // 设置文本内容并测量文本宽度
+        tempText.textContent = labelText
+        const textWidth = tempText.offsetWidth
+        
+        // 总宽度 = 文本宽度 + 左padding + 右padding
+        const totalWidth = textWidth + padding
+        
+        if (totalWidth > maxWidth) {
+          maxWidth = totalWidth
+        }
+      })
+      
+      // 清理临时元素
+      document.body.removeChild(tempText)
+      
+      // 设置最大宽度（至少保留最小宽度 80px）
+      maxLabelWidth.value = Math.max(maxWidth, 80)
+    })
+  })
+}
+
+onMounted(() => {
+  updateMaxLabelWidth()
+})
+
+// 监听配置变化（包括 label 和 fontSize）
+watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('||'), updateMaxLabelWidth, { flush: 'post' })
 </script>
 
 <template>
@@ -49,9 +132,15 @@ function getTierConfig(tierId: string): TierConfig | undefined {
       >
         <div
           class="tier-label"
-          :style="{ backgroundColor: getTierConfig(tier.id)?.color || '#000000' }"
+          :style="{ 
+            backgroundColor: getTierConfig(tier.id)?.color || '#000000',
+            width: maxLabelWidth > 0 ? `${maxLabelWidth}px` : 'auto'
+          }"
         >
-          <span class="tier-label-text">{{ getTierConfig(tier.id)?.label || tier.id }}</span>
+          <span 
+            class="tier-label-text"
+            :style="{ fontSize: `${getTierConfig(tier.id)?.fontSize || 32}px` }"
+          >{{ getTierConfig(tier.id)?.label || tier.id }}</span>
         </div>
         
         <TierRow
@@ -60,9 +149,10 @@ function getTierConfig(tierId: string): TierConfig | undefined {
           :row-id="row.id"
           :is-dragging="props.isDragging"
           :is-exporting-image="props.isExportingImage"
+          :duplicate-item-ids="props.duplicateItemIds"
           @add-item="(index) => emit('add-item', tier.id, row.id, index)"
           @delete-item="(index) => emit('delete-item', tier.id, row.id, index)"
-          @edit-item="(item, index) => emit('edit-item', tier.id, row.id, item, index)"
+          @edit-item="(item, index, isLongPress) => emit('edit-item', tier.id, row.id, item, index, isLongPress)"
           @reorder="(newItems) => emit('reorder', tier.id, row.id, newItems)"
           @drag-start="() => emit('drag-start')"
           @drag-end="() => emit('drag-end')"
@@ -136,8 +226,8 @@ function getTierConfig(tierId: string): TierConfig | undefined {
 }
 
 .tier-label {
-  min-width: 80px;
-  width: 80px;
+  min-width: 80px; /* 最小宽度 */
+  padding: 0 10px; /* 左右内边距，确保文字不贴边 */
   min-height: 120px;
   display: flex;
   flex-direction: column;
@@ -148,12 +238,25 @@ function getTierConfig(tierId: string): TierConfig | undefined {
   color: #ffffff;
   flex-shrink: 0;
   align-self: stretch;
+  writing-mode: horizontal-tb; /* 强制容器内文字横排 */
+  box-sizing: border-box; /* 确保 padding 包含在宽度内 */
 }
 
 .tier-label-text {
-  font-size: 48px;
+  font-size: 32px; /* 减小字体大小以适应横排 */
   font-weight: bold;
   color: #ffffff;
+  writing-mode: horizontal-tb !important; /* 强制所有文字横排显示 */
+  text-orientation: mixed !important; /* 确保文字方向正确 */
+  white-space: nowrap; /* 防止换行 */
+  text-align: center; /* 居中对齐 */
+  line-height: 1.2; /* 设置行高 */
+  display: block; /* 确保文字以块级元素显示 */
+  transform: none !important; /* 确保没有旋转 */
+  direction: ltr !important; /* 强制从左到右方向 */
+  unicode-bidi: normal !important; /* 确保 Unicode 双向算法正常 */
+  word-break: keep-all; /* 防止中文换行 */
+  overflow-wrap: normal; /* 防止换行 */
 }
 
 .delete-row-btn {
