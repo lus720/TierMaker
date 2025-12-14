@@ -245,17 +245,49 @@ function handleCloseEditItem() {
 }
 
 function handleUpdateConfigs(newConfigs: TierConfig[]) {
+  // 保存旧配置的映射（通过 order 映射到 tier）
+  const oldConfigs = tierConfigs.value
+  const oldTierByOrder = new Map<number, Tier>()
+  tiers.value.forEach(tier => {
+    const oldConfig = oldConfigs.find(c => c.id === tier.id)
+    if (oldConfig) {
+      oldTierByOrder.set(oldConfig.order, tier)
+    }
+  })
+  
   tierConfigs.value = newConfigs
   saveTierConfigs(newConfigs)
   
-  // 更新 tiers 结构
-  const existingTierIds = new Set(tiers.value.map(t => t.id))
-  const newTierIds = new Set(newConfigs.map(c => c.id))
+  // 构建新的 tiers 数组，通过 order 匹配保留作品数据
+  const newTiers: Tier[] = []
+  const processedOldTiers = new Set<Tier>()
   
-  // 添加新的等级
   newConfigs.forEach(config => {
-    if (!existingTierIds.has(config.id)) {
-      tiers.value.push({
+    // 通过 order 找到对应的旧 tier（如果有）
+    const oldTier = oldTierByOrder.get(config.order)
+    
+    if (oldTier) {
+      // 找到匹配的旧 tier，更新 id 但保留所有作品数据
+      oldTier.id = config.id
+      // 更新 row 的 id（因为 row id 包含 tier id）
+      oldTier.rows.forEach((row, rowIndex) => {
+        if (rowIndex === 0) {
+          row.id = `${config.id}-row-0`
+        } else {
+          // 如果有多行，保持原有格式
+          const match = row.id.match(/-row-(\d+)$/)
+          if (match) {
+            row.id = `${config.id}-row-${match[1]}`
+          } else {
+            row.id = `${config.id}-row-${rowIndex}`
+          }
+        }
+      })
+      newTiers.push(oldTier)
+      processedOldTiers.add(oldTier)
+    } else {
+      // 没有找到匹配的旧 tier（新增的等级），创建新的空 tier
+      newTiers.push({
         id: config.id,
         rows: [{
           id: `${config.id}-row-0`,
@@ -265,15 +297,11 @@ function handleUpdateConfigs(newConfigs: TierConfig[]) {
     }
   })
   
-  // 移除不存在的等级（确保显示内容与配置完全一致）
-  tiers.value = tiers.value.filter(t => newTierIds.has(t.id))
+  // 替换整个 tiers 数组
+  tiers.value = newTiers
   
-  // 按配置顺序排序
-  tiers.value.sort((a, b) => {
-    const aOrder = newConfigs.find(c => c.id === a.id)?.order ?? 999
-    const bOrder = newConfigs.find(c => c.id === b.id)?.order ?? 999
-    return aOrder - bOrder
-  })
+  // 保存更新后的数据
+  saveTierData(tiers.value)
   
   // 等待 DOM 更新后重新计算等级块宽度
   nextTick(() => {
