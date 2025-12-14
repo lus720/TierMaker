@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { searchBangumiAnime } from '../utils/bangumi'
 import { searchVndbVisualNovel } from '../utils/vndb'
 import { searchAnidbAnime } from '../utils/anidb'
+import { generateDefaultUrl } from '../utils/url'
 import type { AnimeItem, ApiSource, SearchResult } from '../types'
 
 const emit = defineEmits<{
@@ -137,30 +138,6 @@ async function loadMore() {
   }
 }
 
-// 根据 id 生成默认的 web 链接
-function generateDefaultUrl(id: number | string): string | undefined {
-  if (!id) return undefined
-  
-  const idStr = String(id)
-  
-  // AniDB: id 格式为 "anidb_12345"
-  if (idStr.startsWith('anidb_')) {
-    const aid = idStr.replace('anidb_', '')
-    return `https://anidb.net/anime/${aid}`
-  }
-  
-  // VNDB: id 格式为 "v12345"
-  if (idStr.startsWith('v')) {
-    return `https://vndb.org/${idStr}`
-  }
-  
-  // Bangumi: id 是数字
-  if (/^\d+$/.test(idStr)) {
-    return `https://bgm.tv/subject/${idStr}`
-  }
-  
-  return undefined
-}
 
 function handleSelect(result: SearchResult) {
   // 获取图片 URL（按优先级）

@@ -6,6 +6,7 @@ import TierList from './components/TierList.vue'
 import SearchModal from './components/SearchModal.vue'
 import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
+import { getItemUrl } from './utils/url'
 import type { Tier, AnimeItem, TierConfig } from './types'
 import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, exportAllData, importAllData, type ExportData } from './utils/storage'
 
@@ -504,12 +505,12 @@ async function handleExportImage() {
             if (img.src && img.src !== originalUrl) {
               imageUrlToBase64.set(img.src, base64)
             }
-            console.log('✅ 从已加载图片获取base64:', originalUrl.substring(0, 50) + '...')
+            // console.log('✅ 从已加载图片获取base64:', originalUrl.substring(0, 50) + '...')
             return
           }
         }
       } catch (error) {
-        console.debug('从已加载图片获取失败，尝试其他方法:', error)
+        // console.debug('从已加载图片获取失败，尝试其他方法:', error)
       }
       
       // 方法2: 如果是URL，尝试通过网络转换（可能因CORS失败）
@@ -522,23 +523,23 @@ async function handleExportImage() {
           if (img.src && img.src !== originalUrl) {
             imageUrlToBase64.set(img.src, base64)
           }
-          console.log('✅ 通过网络转换成功:', originalUrl.substring(0, 50) + '...')
+          // console.log('✅ 通过网络转换成功:', originalUrl.substring(0, 50) + '...')
         } else {
-          console.warn('⚠️ 图片转换返回null:', originalUrl)
+          // console.warn('⚠️ 图片转换返回null:', originalUrl)
         }
       } catch (error) {
-        console.warn('❌ 无法转换图片:', originalUrl, error)
+        // console.warn('❌ 无法转换图片:', originalUrl, error)
       }
     })
     
     // 等待所有图片转换完成
     const results = await Promise.allSettled(conversionPromises)
     
-    // 统计转换结果
-    const successCount = results.filter(r => r.status === 'fulfilled').length
-    const failCount = results.filter(r => r.status === 'rejected').length
-    console.log(`图片转换完成: 成功 ${successCount}, 失败 ${failCount}, 总计 ${allImages.length}`)
-    console.log('已转换的图片URL:', Array.from(imageUrlToBase64.keys()).slice(0, 5))
+    // 统计转换结果（调试用，可注释）
+    // const successCount = results.filter(r => r.status === 'fulfilled').length
+    // const failCount = results.filter(r => r.status === 'rejected').length
+    // console.log(`图片转换完成: 成功 ${successCount}, 失败 ${failCount}, 总计 ${allImages.length}`)
+    // console.log('已转换的图片URL:', Array.from(imageUrlToBase64.keys()).slice(0, 5))
     
     // 额外等待确保渲染完成
     await new Promise(resolve => setTimeout(resolve, 500))
@@ -556,7 +557,7 @@ async function handleExportImage() {
       onclone: async (clonedDoc) => {
         // 在克隆的文档中，将所有URL图片替换为base64
         const clonedImages = clonedDoc.querySelectorAll('img')
-        console.log(`开始处理 ${clonedImages.length} 张图片`)
+        // console.log(`开始处理 ${clonedImages.length} 张图片`)
         
         for (const clonedImg of clonedImages) {
           // 优先使用data-original-src获取原始URL
@@ -586,10 +587,10 @@ async function handleExportImage() {
           // 如果找到了base64数据，替换src
           if (base64Data) {
             clonedImg.src = base64Data
-            console.log('✅ 在onclone中替换图片:', urlToLookup.substring(0, 50) + '...')
+            // console.log('✅ 在onclone中替换图片:', urlToLookup.substring(0, 50) + '...')
           } else {
             // 如果还没转换，尝试从原始文档中找到对应的img元素
-            console.warn('⚠️ 图片未预先转换，尝试从原始DOM获取:', urlToLookup)
+            // console.warn('⚠️ 图片未预先转换，尝试从原始DOM获取:', urlToLookup)
             try {
               // 在原始文档中查找对应的img元素（使用更灵活的查询）
               let originalImg: HTMLImageElement | null = null
@@ -618,17 +619,17 @@ async function handleExportImage() {
                   if (currentSrc && currentSrc !== urlToLookup) {
                     imageUrlToBase64.set(currentSrc, base64)
                   }
-                  console.log('✅ 在onclone中从原始DOM获取成功:', urlToLookup.substring(0, 50) + '...')
+                  // console.log('✅ 在onclone中从原始DOM获取成功:', urlToLookup.substring(0, 50) + '...')
                 } else {
                   console.error('❌ 在onclone中从原始DOM获取返回null:', urlToLookup)
                 }
               } else {
-                console.warn('⚠️ 原始图片未找到或未加载:', urlToLookup, {
-                  found: !!originalImg,
-                  complete: originalImg?.complete,
-                  naturalWidth: originalImg?.naturalWidth,
-                  naturalHeight: originalImg?.naturalHeight
-                })
+                // console.warn('⚠️ 原始图片未找到或未加载:', urlToLookup, {
+                //   found: !!originalImg,
+                //   complete: originalImg?.complete,
+                //   naturalWidth: originalImg?.naturalWidth,
+                //   naturalHeight: originalImg?.naturalHeight
+                // })
               }
             } catch (error) {
               console.error('❌ 在onclone中转换图片失败:', urlToLookup, error)
@@ -801,35 +802,6 @@ async function handleExportImage() {
   }
 }
 
-// 根据 id 生成默认的 web 链接（用于PDF导出，与 TierRow 中的 getItemUrl 逻辑完全一致）
-function generateItemUrl(item: AnimeItem): string | null {
-  if (!item.id) return null
-  
-  // 优先使用自定义链接（与 TierRow 中的逻辑一致）
-  if (item.url) {
-    return item.url
-  }
-  
-  const idStr = String(item.id)
-  
-  // AniDB: id 格式为 "anidb_12345"
-  if (idStr.startsWith('anidb_')) {
-    const aid = idStr.replace('anidb_', '')
-    return `https://anidb.net/anime/${aid}`
-  }
-  
-  // VNDB: id 格式为 "v12345"
-  if (idStr.startsWith('v')) {
-    return `https://vndb.org/${idStr}`
-  }
-  
-  // Bangumi: id 是数字
-  if (/^\d+$/.test(idStr)) {
-    return `https://bgm.tv/subject/${idStr}`
-  }
-  
-  return null
-}
 
 // 保存为PDF（带超链接）
 async function handleExportPDF() {
@@ -866,9 +838,9 @@ async function handleExportPDF() {
       tier.rows.forEach(row => {
         row.items.forEach((item, itemIndex) => {
           if (item.id) {
-            const url = generateItemUrl(item)
+            const url = getItemUrl(item)
             if (!url) {
-              console.warn(`作品项没有URL:`, item.id, item.name)
+              // console.warn(`作品项没有URL:`, item.id, item.name)
               return
             }
             
@@ -902,9 +874,9 @@ async function handleExportPDF() {
                 rect.height
               )
               itemLinks.push({ url, rect: relativeRect, item })
-              console.log(`✅ 找到链接:`, item.name || item.id, url)
+              // console.log(`✅ 找到链接:`, item.name || item.id, url)
             } else {
-              console.warn(`❌ 找不到DOM元素:`, item.id, item.name, row.id, itemIndex)
+              // console.warn(`❌ 找不到DOM元素:`, item.id, item.name, row.id, itemIndex)
             }
           }
         })
@@ -913,7 +885,7 @@ async function handleExportPDF() {
     
     const totalItems = tiers.value.reduce((sum, tier) => 
       sum + tier.rows.reduce((rowSum, row) => rowSum + row.items.filter(item => item.id).length, 0), 0)
-    console.log(`📊 总共收集到 ${itemLinks.length} 个链接，总作品数: ${totalItems}`)
+    // console.log(`📊 总共收集到 ${itemLinks.length} 个链接，总作品数: ${totalItems}`)
     
     // 使用 html2canvas 生成图片（复用现有的图片转换逻辑）
     // 先转换图片，复用 handleExportImage 的逻辑
@@ -1097,10 +1069,10 @@ async function handleExportPDF() {
       
       // 添加超链接
       pdf.link(x, y, w, h, { url })
-      console.log(`🔗 添加链接:`, item.name || item.id, url, `PDF坐标: (${x.toFixed(2)}, ${y.toFixed(2)}, ${w.toFixed(2)}, ${h.toFixed(2)})`)
+      // console.log(`🔗 添加链接:`, item.name || item.id, url, `PDF坐标: (${x.toFixed(2)}, ${y.toFixed(2)}, ${w.toFixed(2)}, ${h.toFixed(2)})`)
     })
     
-    console.log(`📄 PDF尺寸: ${pdfWidth}x${pdfHeight}mm, Canvas尺寸: ${canvasWidth}x${canvasHeight}px (scale=${htmlScale})`)
+    // console.log(`📄 PDF尺寸: ${pdfWidth}x${pdfHeight}mm, Canvas尺寸: ${canvasWidth}x${canvasHeight}px (scale=${htmlScale})`)
     
     // 保存PDF
     pdf.save(`tier-list-${new Date().toISOString().split('T')[0]}.pdf`)

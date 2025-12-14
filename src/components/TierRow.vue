@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import Sortable from 'sortablejs'
+import { getItemUrl } from '../utils/url'
 import type { TierRow, AnimeItem } from '../types'
 
 const props = defineProps<{
@@ -292,35 +293,6 @@ function isAnidbImage(url: string | null | undefined): boolean {
   return url.includes('anidb.net')
 }
 
-// 根据 id 判断来源并生成跳转 URL
-function getItemUrl(item: AnimeItem): string | null {
-  if (!item.id) return null
-  
-  // 优先使用自定义链接
-  if (item.url) {
-    return item.url
-  }
-  
-  const idStr = String(item.id)
-  
-  // AniDB: id 格式为 "anidb_12345"
-  if (idStr.startsWith('anidb_')) {
-    const aid = idStr.replace('anidb_', '')
-    return `https://anidb.net/anime/${aid}`
-  }
-  
-  // VNDB: id 格式为 "v12345"
-  if (idStr.startsWith('v')) {
-    return `https://vndb.org/${idStr}`
-  }
-  
-  // Bangumi: id 是数字
-  if (/^\d+$/.test(idStr)) {
-    return `https://bgm.tv/subject/${idStr}`
-  }
-  
-  return null
-}
 
 // 处理图片点击跳转
 function handleImageClick(item: AnimeItem, e: MouseEvent) {

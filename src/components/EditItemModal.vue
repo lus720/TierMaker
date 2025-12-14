@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { AnimeItem } from '../types'
+import { generateDefaultUrl } from '../utils/url'
 
 const props = defineProps<{
   item: AnimeItem | null
@@ -20,33 +21,7 @@ const imageFile = ref<File | null>(null)
 const imagePreview = ref<string>('')
 const modalContentRef = ref<HTMLElement | null>(null)
 const mouseDownInside = ref(false)
-const mouseDownTime = ref<number>(0)
 const hasHandledLongPressMouseUp = ref(false)
-
-// 根据 id 生成默认的 web 链接
-function generateDefaultUrl(id: number | string): string | undefined {
-  if (!id) return undefined
-  
-  const idStr = String(id)
-  
-  // AniDB: id 格式为 "anidb_12345"
-  if (idStr.startsWith('anidb_')) {
-    const aid = idStr.replace('anidb_', '')
-    return `https://anidb.net/anime/${aid}`
-  }
-  
-  // VNDB: id 格式为 "v12345"
-  if (idStr.startsWith('v')) {
-    return `https://vndb.org/${idStr}`
-  }
-  
-  // Bangumi: id 是数字
-  if (/^\d+$/.test(idStr)) {
-    return `https://bgm.tv/subject/${idStr}`
-  }
-  
-  return undefined
-}
 
 watch(() => props.item, (newItem) => {
   if (newItem) {
@@ -159,7 +134,6 @@ function isInsideModalContent(x: number, y: number): boolean {
 
 function handleMouseDown(event: MouseEvent) {
   mouseDownInside.value = isInsideModalContent(event.clientX, event.clientY)
-  mouseDownTime.value = Date.now()
 }
 
 function handleMouseUp(event: MouseEvent) {

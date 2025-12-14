@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, watchEffect, nextTick } from 'vue'
+import { ref, onMounted, watch, nextTick } from 'vue'
 import TierRow from './TierRow.vue'
 import type { Tier, TierConfig, AnimeItem } from '../types'
 
