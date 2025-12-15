@@ -5,6 +5,8 @@ const TIER_CONFIG_KEY = 'tier-config'
 const BGM_TOKEN_KEY = 'bgm-access-token'
 const TITLE_KEY = 'tier-list-title'
 const TITLE_FONT_SIZE_KEY = 'tier-list-title-font-size'
+const LAST_SEARCH_SOURCE_KEY = 'last-search-source'
+const THEME_KEY = 'theme-preference'
 
 /**
  * 默认评分等级配置
@@ -130,15 +132,15 @@ export function saveTitle(title: string): void {
 
 /**
  * 加载标题
- * 返回默认标题 "极简 Tier List" 如果未设置
+ * 返回默认标题 "Tier List" 如果未设置
  */
 export function loadTitle(): string {
   try {
     const title = localStorage.getItem(TITLE_KEY)
-    return title || '极简 Tier List'
+    return title || 'Tier List'
   } catch (error) {
     console.error('加载标题失败:', error)
-    return '极简 Tier List'
+    return 'Tier List'
   }
 }
 
@@ -221,6 +223,82 @@ export function importAllData(data: ExportData): {
   } catch (error) {
     console.error('导入数据失败:', error)
     return { success: false, error: error instanceof Error ? error.message : '未知错误' }
+  }
+}
+
+/**
+ * 保存上次使用的搜索源
+ */
+export function saveLastSearchSource(source: string): void {
+  try {
+    if (source && source.trim()) {
+      localStorage.setItem(LAST_SEARCH_SOURCE_KEY, source.trim())
+    }
+  } catch (error) {
+    console.error('保存搜索源失败:', error)
+  }
+}
+
+/**
+ * 加载上次使用的搜索源
+ * 返回默认值 'bangumi' 如果未设置
+ */
+export function loadLastSearchSource(): string {
+  try {
+    const source = localStorage.getItem(LAST_SEARCH_SOURCE_KEY)
+    // 验证是否为有效的搜索源
+    const validSources = ['bangumi', 'character', 'vndb', 'anidb']
+    if (source && validSources.includes(source)) {
+      return source
+    }
+  } catch (error) {
+    console.error('加载搜索源失败:', error)
+  }
+  return 'bangumi' // 默认值
+}
+
+/**
+ * 保存主题偏好设置
+ * @param theme 'light' | 'dark' | 'auto' (auto 表示跟随系统)
+ */
+export function saveThemePreference(theme: 'light' | 'dark' | 'auto'): void {
+  try {
+    localStorage.setItem(THEME_KEY, theme)
+  } catch (error) {
+    console.error('保存主题设置失败:', error)
+  }
+}
+
+/**
+ * 加载主题偏好设置
+ * 返回 'auto' 如果未设置（默认跟随系统）
+ */
+export function loadThemePreference(): 'light' | 'dark' | 'auto' {
+  try {
+    const theme = localStorage.getItem(THEME_KEY)
+    if (theme === 'light' || theme === 'dark' || theme === 'auto') {
+      return theme
+    }
+  } catch (error) {
+    console.error('加载主题设置失败:', error)
+  }
+  return 'auto' // 默认跟随系统
+}
+
+/**
+ * 清空所有数据（包括作品、配置、标题等）
+ */
+export function clearAllData(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(TIER_CONFIG_KEY)
+    localStorage.removeItem(TITLE_KEY)
+    localStorage.removeItem(TITLE_FONT_SIZE_KEY)
+    localStorage.removeItem(LAST_SEARCH_SOURCE_KEY)
+    // 注意：不清空 BGM_TOKEN_KEY 和 THEME_KEY，因为这是用户配置，不是数据
+  } catch (error) {
+    console.error('清空数据失败:', error)
+    throw error
   }
 }
 

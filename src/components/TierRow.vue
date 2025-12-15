@@ -536,7 +536,7 @@ function getLongPressProgress(index: number): number {
             cy="50"
             r="45"
             fill="none"
-            stroke="#000000"
+            stroke="currentColor"
             stroke-width="5"
             :stroke-dasharray="`${2 * Math.PI * 45}`"
             :stroke-dashoffset="`${2 * Math.PI * 45 * (1 - getLongPressProgress(index) / 100)}`"
@@ -564,7 +564,7 @@ function getLongPressProgress(index: number): number {
   flex: 1;
   min-height: 120px;
   padding: 10px;
-  background: #ffffff;
+  background: var(--bg-color);
   align-self: stretch;
 }
 
@@ -573,7 +573,7 @@ function getLongPressProgress(index: number): number {
   width: 100px;
   height: 173px;
   border: none;
-  background: #ffffff;
+  background: var(--bg-color);
   cursor: pointer;
   transition: all 0.2s;
   overflow: hidden;
@@ -591,7 +591,7 @@ function getLongPressProgress(index: number): number {
 }
 
 .tier-item.empty {
-  border: 2px dashed #cccccc;
+  border: 2px dashed var(--border-light-color);
   cursor: pointer;
   order: 9999; /* 确保空位始终在最后 */
 }
@@ -631,7 +631,7 @@ function getLongPressProgress(index: number): number {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f5f5;
+  background: var(--bg-light-color);
 }
 
 .item-image {
@@ -650,7 +650,7 @@ function getLongPressProgress(index: number): number {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f5f5; /* 与搜索结果相同的背景色 */
+  background: var(--bg-light-color); /* 与搜索结果相同的背景色 */
 }
 
 /* 角色图片：与搜索结果保持一致，使用 contain 模式 */
@@ -676,12 +676,12 @@ function getLongPressProgress(index: number): number {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f5f5f5;
+  background: var(--bg-light-color);
 }
 
 .placeholder-text {
   font-size: 32px;
-  color: #cccccc;
+  color: var(--border-light-color);
   font-weight: bold;
 }
 
@@ -695,7 +695,7 @@ function getLongPressProgress(index: number): number {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
-  background: #ffffff;
+  background: var(--bg-color);
   border-top: none;
 }
 
@@ -705,9 +705,9 @@ function getLongPressProgress(index: number): number {
   right: 4px;
   width: 20px;
   height: 20px;
-  border: 1px solid #000000;
-  background: #ffffff;
-  color: #000000;
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-size: 16px;
   font-weight: bold;
   cursor: pointer;
@@ -725,8 +725,8 @@ function getLongPressProgress(index: number): number {
 }
 
 .delete-btn:hover {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .long-press-loader {
@@ -741,6 +741,13 @@ function getLongPressProgress(index: number): number {
   background: rgba(255, 255, 255, 0.9);
   z-index: 20;
   pointer-events: none;
+  color: var(--border-color);
+}
+
+@media (prefers-color-scheme: dark) {
+  .long-press-loader {
+    background: rgba(26, 26, 26, 0.9);
+  }
 }
 
 .progress-ring {

@@ -8,7 +8,7 @@ import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
 import { getItemUrl } from './utils/url'
 import type { Tier, AnimeItem, TierConfig } from './types'
-import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, type ExportData } from './utils/storage'
+import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, clearAllData, loadThemePreference, DEFAULT_TIER_CONFIGS, type ExportData } from './utils/storage'
 
 const tiers = ref<Tier[]>([])
 const tierConfigs = ref<TierConfig[]>([])
@@ -20,7 +20,7 @@ const currentRowId = ref<string | null>(null)
 const currentIndex = ref<number | null>(null)
 const currentEditItem = ref<AnimeItem | null>(null)
 const isLongPressEdit = ref(false)
-const title = ref<string>('极简 Tier List')
+const title = ref<string>('Tier List')
 const titleFontSize = ref<number>(32)
 const isDragging = ref(false) // 全局拖动状态
 const tierListRef = ref<InstanceType<typeof TierList> | null>(null)
@@ -52,8 +52,63 @@ const duplicateItemIds = computed(() => {
   return duplicates
 })
 
+// 应用主题设置
+function applyTheme(theme: 'light' | 'dark' | 'auto') {
+  const html = document.documentElement
+  html.setAttribute('data-theme', theme)
+}
+
+// 获取当前主题对应的背景色
+function getCurrentThemeBackgroundColor(): string {
+  // 直接从 CSS 变量读取背景色，确保与页面显示一致
+  const computedStyle = getComputedStyle(document.documentElement)
+  const bgColor = computedStyle.getPropertyValue('--bg-color').trim()
+  
+  // 如果成功读取到颜色值，返回它
+  if (bgColor) {
+    return bgColor
+  }
+  
+  // 如果读取失败，回退到检测主题
+  const html = document.documentElement
+  const theme = html.getAttribute('data-theme') || 'auto'
+  
+  if (theme === 'dark') {
+    return '#1a1a1a'
+  }
+  
+  if (theme === 'auto') {
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return '#1a1a1a'
+    }
+  }
+  
+  return '#ffffff' // 默认浅色模式
+}
+
+// 初始化主题
+function initTheme() {
+  const theme = loadThemePreference()
+  applyTheme(theme)
+  
+  // 如果设置为 auto，监听系统主题变化
+  if (theme === 'auto') {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    const handleSystemThemeChange = (e: MediaQueryListEvent) => {
+      // 只有在设置为 auto 时才响应系统变化
+      const currentTheme = loadThemePreference()
+      if (currentTheme === 'auto') {
+        // data-theme 保持为 auto，CSS 会自动响应媒体查询
+        applyTheme('auto')
+      }
+    }
+    mediaQuery.addEventListener('change', handleSystemThemeChange)
+  }
+}
+
 // 加载数据
 onMounted(() => {
+  initTheme()
   title.value = loadTitle()
   titleFontSize.value = loadTitleFontSize()
   tierConfigs.value = loadTierConfigs()
@@ -315,6 +370,48 @@ function handleUpdateConfigs(newConfigs: TierConfig[]) {
 
 function handleUpdateTitleFontSize(newFontSize: number) {
   titleFontSize.value = newFontSize
+  saveTitleFontSize(newFontSize)
+}
+
+function handleUpdateTheme(theme: 'light' | 'dark' | 'auto') {
+  applyTheme(theme)
+}
+
+function handleClearAll() {
+  try {
+    // 清空所有存储的数据
+    clearAllData()
+    
+    // 重置为默认配置
+    tierConfigs.value = JSON.parse(JSON.stringify(DEFAULT_TIER_CONFIGS))
+    saveTierConfigs(tierConfigs.value)
+    
+    // 重置 tiers 为默认结构
+    tiers.value = DEFAULT_TIER_CONFIGS.map(config => ({
+      id: config.id,
+      rows: [{
+        id: `${config.id}-row-0`,
+        items: [],
+      }],
+    }))
+    saveTierData(tiers.value)
+    
+    // 重置标题和字体大小
+    title.value = 'Tier List'
+    titleFontSize.value = 32
+    saveTitle(title.value)
+    saveTitleFontSize(titleFontSize.value)
+    
+    // 更新标题显示
+    nextTick(() => {
+      if (titleRef.value) {
+        titleRef.value.textContent = title.value
+      }
+    })
+  } catch (error) {
+    console.error('清空数据失败:', error)
+    alert('清空数据失败，请刷新页面重试')
+  }
 }
 
 // 监听设置页面关闭，重新计算宽度
@@ -339,7 +436,7 @@ function handleTitleInput(e: Event) {
   const target = e.target as HTMLHeadingElement
   // 总是更新 title，即使内容为空（允许删除）
   const newTitle = target.textContent?.trim() || ''
-  title.value = newTitle || '极简 Tier List'
+  title.value = newTitle || 'Tier List'
   saveTitle(title.value)
 }
 
@@ -354,7 +451,7 @@ function handleTitleBlur(e: Event) {
     saveTitle(title.value)
   } else {
     // 如果为空，恢复为默认值
-    const defaultTitle = '极简 Tier List'
+    const defaultTitle = 'Tier List'
     title.value = defaultTitle
     target.textContent = defaultTitle
     saveTitle(defaultTitle)
@@ -584,11 +681,15 @@ async function handleExportImage() {
       useCORS: false, // 禁用CORS，因为我们已经在onclone中处理了所有图片
       allowTaint: false, // 不允许污染画布（确保所有图片都已转换为base64）
       logging: true, // 启用日志以便调试
-      backgroundColor: '#ffffff',
+      backgroundColor: getCurrentThemeBackgroundColor(), // 根据当前主题设置背景色
       imageTimeout: 30000, // 增加图片加载超时时间
       removeContainer: false, // 保留容器
       foreignObjectRendering: false, // 禁用 foreignObject，使用传统渲染
       onclone: async (clonedDoc) => {
+        // 确保克隆的文档也应用了正确的主题
+        const currentTheme = document.documentElement.getAttribute('data-theme') || 'auto'
+        clonedDoc.documentElement.setAttribute('data-theme', currentTheme)
+        
         // 在克隆的文档中，将所有URL图片替换为base64
         const clonedImages = clonedDoc.querySelectorAll('img')
         // console.log(`开始处理 ${clonedImages.length} 张图片`)
@@ -983,8 +1084,12 @@ async function handleExportPDF() {
       useCORS: false,
       allowTaint: false,
       logging: false,
-      backgroundColor: '#ffffff',
+      backgroundColor: getCurrentThemeBackgroundColor(), // 根据当前主题设置背景色
       onclone: async (clonedDoc) => {
+        // 确保克隆的文档也应用了正确的主题
+        const currentTheme = document.documentElement.getAttribute('data-theme') || 'auto'
+        clonedDoc.documentElement.setAttribute('data-theme', currentTheme)
+        
         // 在克隆的文档中，将所有URL图片替换为base64
         const clonedImages = clonedDoc.querySelectorAll('img')
         
@@ -1387,6 +1492,8 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
       @close="showConfig = false"
       @update="handleUpdateConfigs"
       @update-title-font-size="handleUpdateTitleFontSize"
+      @update-theme="handleUpdateTheme"
+      @clear-all="handleClearAll"
     />
 
     <EditItemModal
@@ -1410,7 +1517,7 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0;
-  border-bottom: 2px solid #000000;
+  border-bottom: 2px solid var(--border-color);
   position: relative;
 }
 
@@ -1420,7 +1527,7 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
 
 .title {
   font-weight: bold;
-  color: #000000;
+  color: var(--text-color);
   letter-spacing: 2px;
   cursor: text;
   outline: none;
@@ -1439,7 +1546,7 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
 
 .title:focus {
   opacity: 1;
-  border-bottom: 2px dashed #000000;
+  border-bottom: 2px dashed var(--border-color);
 }
 
 .header-actions {
@@ -1449,9 +1556,9 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
 
 .btn {
   padding: 10px 20px;
-  border: 2px solid #000000;
-  background: #ffffff;
-  color: #000000;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-size: 14px;
   font-weight: bold;
   cursor: pointer;
@@ -1459,12 +1566,12 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
 }
 
 .btn:hover {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .btn-secondary {
-  background: #ffffff;
+  background: var(--bg-color);
 }
 
 .btn:disabled {
@@ -1473,8 +1580,8 @@ async function convertImageToBase64ForExport(imageUrl: string): Promise<string |
 }
 
 .btn:disabled:hover {
-  background: #ffffff;
-  color: #000000;
+  background: var(--bg-color);
+  color: var(--text-color);
 }
 </style>
 

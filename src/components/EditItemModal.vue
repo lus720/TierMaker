@@ -268,8 +268,8 @@ function handleMouseUp(event: MouseEvent) {
 }
 
 .modal-content {
-  background: #ffffff;
-  border: 2px solid #000000;
+  background: var(--bg-color);
+  border: 2px solid var(--border-color);
   max-width: 600px;
   width: 90%;
   max-height: 90vh;
@@ -283,13 +283,14 @@ function handleMouseUp(event: MouseEvent) {
   justify-content: space-between;
   align-items: center;
   padding: 20px;
-  border-bottom: 2px solid #000000;
+  border-bottom: 2px solid var(--border-color);
 }
 
 .modal-header h2 {
   margin: 0;
   font-size: 20px;
   font-weight: bold;
+  color: var(--text-color);
 }
 
 .close-btn {
@@ -328,28 +329,30 @@ function handleMouseUp(event: MouseEvent) {
   margin-bottom: 8px;
   font-size: 14px;
   font-weight: bold;
-  color: #000000;
+  color: var(--text-color);
 }
 
 .form-input {
   width: 100%;
   padding: 10px;
-  border: 2px solid #000000;
-  background: #ffffff;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg);
+  color: var(--text-color);
   font-size: 14px;
   box-sizing: border-box;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: #666666;
+  border-color: var(--border-light-color);
 }
 
 .form-file-input {
   width: 100%;
   padding: 10px;
-  border: 2px solid #000000;
-  background: #ffffff;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg);
+  color: var(--text-color);
   font-size: 14px;
   box-sizing: border-box;
   cursor: pointer;
@@ -358,18 +361,18 @@ function handleMouseUp(event: MouseEvent) {
 .form-hint {
   margin-top: 4px;
   font-size: 12px;
-  color: #666666;
+  color: var(--text-secondary);
 }
 
 .image-preview-container {
   width: 100%;
   height: 200px;
-  border: 2px solid #000000;
+  border: 2px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: #f5f5f5;
+  background: var(--bg-light-color);
 }
 
 .image-preview {
@@ -379,24 +382,24 @@ function handleMouseUp(event: MouseEvent) {
 }
 
 .image-placeholder {
-  color: #999999;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
 .clear-btn {
   margin-left: 8px;
   padding: 2px 8px;
-  border: 1px solid #000000;
-  background: #ffffff;
-  color: #000000;
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-size: 12px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .clear-btn:hover {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .modal-footer {
@@ -404,14 +407,14 @@ function handleMouseUp(event: MouseEvent) {
   justify-content: flex-end;
   gap: 10px;
   padding: 20px;
-  border-top: 2px solid #000000;
+  border-top: 2px solid var(--border-color);
 }
 
 .btn {
   padding: 10px 20px;
-  border: 2px solid #000000;
-  background: #ffffff;
-  color: #000000;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-size: 14px;
   font-weight: bold;
   cursor: pointer;
@@ -419,22 +422,22 @@ function handleMouseUp(event: MouseEvent) {
 }
 
 .btn:hover {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .btn-primary {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .btn-primary:hover {
-  background: #333333;
+  opacity: 0.8;
 }
 
 .btn-secondary {
-  background: #ffffff;
-  color: #000000;
+  background: var(--bg-color);
+  color: var(--text-color);
 }
 </style>
 

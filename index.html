@@ -5,6 +5,89 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>极简 Tier List - 动画评分表</title>
   <meta name="description" content="黑白极简风格的动画评分表生成器，支持自定义评分等级和多行布局，集成 Bangumi API 搜索">
+  <script>
+    // 在页面渲染前设置主题，避免闪烁
+    (function() {
+      try {
+        const theme = localStorage.getItem('theme-preference');
+        // 验证主题值是否有效
+        const validTheme = (theme === 'light' || theme === 'dark' || theme === 'auto') 
+          ? theme 
+          : 'auto';
+        document.documentElement.setAttribute('data-theme', validTheme);
+      } catch (e) {
+        // 如果出错，使用默认值
+        document.documentElement.setAttribute('data-theme', 'auto');
+      }
+    })();
+  </script>
+  <style>
+    /* 关键主题 CSS - 内联以避免闪烁 */
+    :root {
+      --bg-color: #ffffff;
+      --text-color: #000000;
+      --border-color: #000000;
+      --border-light-color: #cccccc;
+      --bg-light-color: #f5f5f5;
+      --bg-lighter-color: #f1f1f1;
+      --bg-hover-color: #f0f0f0;
+      --modal-overlay: rgba(0, 0, 0, 0.5);
+      --scrollbar-track: #f0f0f0;
+      --scrollbar-thumb: #000000;
+      --scrollbar-thumb-hover: #333333;
+      --input-bg: #ffffff;
+      --warning-bg: #fff9e6;
+      --text-secondary: #666666;
+      --text-link: #0066cc;
+      --text-link-hover: #004499;
+    }
+    
+    [data-theme="dark"] {
+      --bg-color: #1a1a1a;
+      --text-color: #e0e0e0;
+      --border-color: #666666;
+      --border-light-color: #444444;
+      --bg-light-color: #2a2a2a;
+      --bg-lighter-color: #333333;
+      --bg-hover-color: #3a3a3a;
+      --modal-overlay: rgba(0, 0, 0, 0.7);
+      --scrollbar-track: #2a2a2a;
+      --scrollbar-thumb: #666666;
+      --scrollbar-thumb-hover: #888888;
+      --input-bg: #2a2a2a;
+      --warning-bg: #3a2a1a;
+      --text-secondary: #999999;
+      --text-link: #4a9eff;
+      --text-link-hover: #6bb3ff;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+      [data-theme="auto"] {
+        --bg-color: #1a1a1a;
+        --text-color: #e0e0e0;
+        --border-color: #666666;
+        --border-light-color: #444444;
+        --bg-light-color: #2a2a2a;
+        --bg-lighter-color: #333333;
+        --bg-hover-color: #3a3a3a;
+        --modal-overlay: rgba(0, 0, 0, 0.7);
+        --scrollbar-track: #2a2a2a;
+        --scrollbar-thumb: #666666;
+        --scrollbar-thumb-hover: #888888;
+        --input-bg: #2a2a2a;
+        --warning-bg: #3a2a1a;
+        --text-secondary: #999999;
+        --text-link: #4a9eff;
+        --text-link-hover: #6bb3ff;
+      }
+    }
+    
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+  </style>
 </head>
 <body>
   <div id="app"></div>

@@ -207,7 +207,7 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
   display: flex;
   flex-direction: column;
   gap: 0;
-  border-top: 2px solid #000000;
+  border-top: 2px solid var(--border-color);
 }
 
 .tier-group:first-child {
@@ -218,7 +218,7 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
   display: flex;
   align-items: stretch;
   gap: 0;
-  border-top: 1px solid #000000;
+  border-top: 1px solid var(--border-color);
 }
 
 .tier-row-wrapper:first-child {
@@ -234,8 +234,8 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
   align-items: center;
   justify-content: center;
   position: relative;
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
   flex-shrink: 0;
   align-self: stretch;
   writing-mode: horizontal-tb; /* 强制容器内文字横排 */
@@ -245,7 +245,7 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
 .tier-label-text {
   font-size: 32px; /* 减小字体大小以适应横排 */
   font-weight: bold;
-  color: #ffffff;
+  color: var(--bg-color);
   writing-mode: horizontal-tb !important; /* 强制所有文字横排显示 */
   text-orientation: mixed !important; /* 确保文字方向正确 */
   white-space: nowrap; /* 防止换行 */
@@ -262,8 +262,8 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
 .delete-row-btn {
   width: 30px;
   min-width: 30px;
-  background: #ffffff;
-  color: #000000;
+  background: var(--bg-color);
+  color: var(--text-color);
   font-size: 24px;
   font-weight: bold;
   cursor: pointer;
@@ -275,8 +275,8 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
 }
 
 .delete-row-btn:hover {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 </style>
 

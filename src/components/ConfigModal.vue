@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import type { TierConfig } from '../types'
-import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize } from '../utils/storage'
+import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadThemePreference, saveThemePreference } from '../utils/storage'
 
 const props = defineProps<{
   configs: TierConfig[]
@@ -11,14 +11,18 @@ const emit = defineEmits<{
   close: []
   update: [configs: TierConfig[]]
   'update-title-font-size': [fontSize: number]
+  'update-theme': [theme: 'light' | 'dark' | 'auto']
+  'clear-all': []
 }>()
 
 const localConfigs = ref<TierConfig[]>([])
 const bgmToken = ref('')
 const titleFontSize = ref<number>(32)
+const themePreference = ref<'light' | 'dark' | 'auto'>('auto')
 const inputValues = ref<Record<number, string>>({})
 const modalContentRef = ref<HTMLElement | null>(null)
 const mouseDownInside = ref(false)
+const showClearConfirm = ref(false)
 
 // 预设颜色选项
 const presetColors = [
@@ -58,6 +62,7 @@ onMounted(() => {
     bgmToken.value = savedToken
   }
   titleFontSize.value = loadTitleFontSize()
+  themePreference.value = loadThemePreference()
 })
 
 function addTier() {
@@ -119,8 +124,20 @@ function handleSave() {
   emit('update', localConfigs.value)
   saveBgmToken(bgmToken.value || null)
   saveTitleFontSize(titleFontSize.value)
+  saveThemePreference(themePreference.value)
   emit('update-title-font-size', titleFontSize.value)
+  emit('update-theme', themePreference.value)
   emit('close')
+}
+
+function applyTheme(theme: 'light' | 'dark' | 'auto') {
+  const html = document.documentElement
+  html.setAttribute('data-theme', theme)
+}
+
+function handleThemeChange() {
+  // 立即应用主题变化，不需要等待保存
+  applyTheme(themePreference.value)
 }
 
 
@@ -151,6 +168,20 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   config.id = newValue
   config.label = newValue
 }
+
+function handleClearClick() {
+  showClearConfirm.value = true
+}
+
+function handleConfirmClear() {
+  showClearConfirm.value = false
+  emit('clear-all')
+  emit('close')
+}
+
+function handleCancelClear() {
+  showClearConfirm.value = false
+}
 </script>
 
 <template>
@@ -176,6 +207,20 @@ function handleTierIdBlur(config: TierConfig, index: number) {
             class="config-input"
             style="max-width: 120px;"
           />
+          <button class="btn btn-danger" @click="handleClearClick">清空所有数据</button>
+        </div>
+        <div class="config-item-row" style="margin-top: 15px;">
+          <label for="theme-preference">主题模式:</label>
+          <select
+            id="theme-preference"
+            v-model="themePreference"
+            @change="handleThemeChange"
+            class="config-select"
+          >
+            <option value="auto">跟随系统</option>
+            <option value="light">浅色模式</option>
+            <option value="dark">暗色模式</option>
+          </select>
         </div>
       </div>
       
@@ -289,6 +334,30 @@ function handleTierIdBlur(config: TierConfig, index: number) {
       </div>
     </div>
   </div>
+  
+  <!-- 确认弹窗 -->
+  <div v-if="showClearConfirm" class="confirm-overlay" @click.self="handleCancelClear">
+    <div class="confirm-modal">
+      <div class="confirm-header">
+        <h3 class="confirm-title">⚠️ 警告</h3>
+      </div>
+      <div class="confirm-body">
+        <p>您确定要清空所有数据吗？</p>
+        <p class="confirm-warning">此操作将删除：</p>
+        <ul class="confirm-list">
+          <li>所有已添加的作品</li>
+          <li>所有评分等级配置</li>
+          <li>标题和字体大小设置</li>
+          <li>搜索历史记录</li>
+        </ul>
+        <p class="confirm-danger">此操作不可恢复！</p>
+      </div>
+      <div class="confirm-footer">
+        <button class="btn btn-cancel" @click="handleCancelClear">取消</button>
+        <button class="btn btn-danger-confirm" @click="handleConfirmClear">确认清空</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -298,7 +367,7 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--modal-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -306,8 +375,8 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 }
 
 .modal-content {
-  background: #ffffff;
-  border: 2px solid #000000;
+  background: var(--bg-color);
+  border: 2px solid var(--border-color);
   width: 90%;
   max-width: 600px;
   max-height: 80vh;
@@ -330,24 +399,24 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 }
 
 .modal-body::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--scrollbar-track);
   border-radius: 6px;
 }
 
 .modal-body::-webkit-scrollbar-thumb {
-  background: #888;
+  background: var(--scrollbar-thumb);
   border-radius: 6px;
-  border: 2px solid #f1f1f1;
+  border: 2px solid var(--scrollbar-track);
 }
 
 .modal-body::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Firefox 滚动条样式 */
 .modal-body {
   scrollbar-width: thin;
-  scrollbar-color: #888 #f1f1f1;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 .modal-header {
@@ -355,20 +424,22 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   justify-content: space-between;
   align-items: center;
   padding: 20px;
-  border-bottom: 2px solid #000000;
+  border-bottom: 2px solid var(--border-color);
   flex-shrink: 0;
 }
 
 .modal-title {
   font-size: 24px;
   font-weight: bold;
+  color: var(--text-color);
 }
 
 .close-btn {
   width: 30px;
   height: 30px;
-  border: 2px solid #000000;
-  background: #ffffff;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-size: 24px;
   cursor: pointer;
   display: flex;
@@ -379,13 +450,13 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 }
 
 .close-btn:hover {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .config-section {
   padding: 20px;
-  border-bottom: 1px solid #cccccc;
+  border-bottom: 1px solid var(--border-light-color);
 }
 
 .config-section:last-of-type {
@@ -396,6 +467,21 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   font-size: 18px;
   font-weight: bold;
   margin-bottom: 15px;
+}
+
+.config-item-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.config-item-row label {
+  white-space: nowrap;
+}
+
+.config-item-row .btn {
+  margin-left: auto;
 }
 
 .token-config {
@@ -413,15 +499,18 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 .token-input {
   flex: 1;
   padding: 10px;
-  border: 2px solid #000000;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg);
+  color: var(--text-color);
   font-size: 14px;
   font-family: monospace;
 }
 
 .token-clear-btn {
   padding: 10px 15px;
-  border: 2px solid #000000;
-  background: #ffffff;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-weight: bold;
   cursor: pointer;
   transition: all 0.2s;
@@ -429,8 +518,8 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 }
 
 .token-clear-btn:hover:not(:disabled) {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .token-clear-btn:disabled {
@@ -440,18 +529,18 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 
 .token-hint {
   font-size: 12px;
-  color: #666666;
+  color: var(--text-secondary);
   line-height: 1.6;
   margin: 0;
 }
 
 .token-hint a {
-  color: #0066cc;
+  color: var(--text-link);
   text-decoration: underline;
 }
 
 .token-hint a:hover {
-  color: #004499;
+  color: var(--text-link-hover);
 }
 
 .config-list {
@@ -468,7 +557,8 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   align-items: center;
   padding: 15px;
   margin-bottom: 10px;
-  border: 2px solid #000000;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
 }
 
 
@@ -486,16 +576,17 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 .move-btn {
   width: 30px;
   height: 20px;
-  border: 1px solid #000000;
-  background: #ffffff;
+  border: 1px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   cursor: pointer;
   font-size: 12px;
   transition: all 0.2s;
 }
 
 .move-btn:hover:not(:disabled) {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .move-btn:disabled {
@@ -506,14 +597,28 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 .config-input {
   flex: 1;
   padding: 8px;
-  border: 2px solid #000000;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg);
+  color: var(--text-color);
   font-size: 14px;
+}
+
+.config-select {
+  padding: 8px;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg);
+  color: var(--text-color);
+  font-size: 14px;
+  cursor: pointer;
+  min-width: 150px;
 }
 
 .config-fontsize {
   width: 80px;
   padding: 8px;
-  border: 2px solid #000000;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg);
+  color: var(--text-color);
   font-size: 14px;
   text-align: center;
 }
@@ -528,7 +633,7 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 .config-color {
   width: 60px;
   height: 40px;
-  border: 2px solid #000000;
+  border: 2px solid var(--border-color);
   cursor: pointer;
 }
 
@@ -562,16 +667,17 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 
 .remove-btn {
   padding: 8px 15px;
-  border: 2px solid #000000;
-  background: #ffffff;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-weight: bold;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .remove-btn:hover:not(:disabled) {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .remove-btn:disabled {
@@ -581,7 +687,7 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 
 .modal-footer {
   padding: 20px;
-  border-top: 2px solid #000000;
+  border-top: 2px solid var(--border-color);
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -591,16 +697,17 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 
 .add-btn {
   padding: 10px 20px;
-  border: 2px solid #000000;
-  background: #ffffff;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-weight: bold;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .add-btn:hover {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .footer-actions {
@@ -610,28 +717,126 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 
 .btn {
   padding: 10px 20px;
-  border: 2px solid #000000;
+  border: 2px solid var(--border-color);
   font-weight: bold;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .btn-cancel {
-  background: #ffffff;
-  color: #000000;
+  background: var(--bg-color);
+  color: var(--text-color);
 }
 
 .btn-cancel:hover {
-  background: #f0f0f0;
+  background: var(--bg-hover-color);
 }
 
 .btn-save {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .btn-save:hover {
-  background: #333333;
+  opacity: 0.8;
+}
+
+.btn-danger {
+  background: var(--bg-color);
+  color: #cc6666;
+  border-color: #cc6666;
+}
+
+.btn-danger:hover {
+  background: #cc6666;
+  color: #ffffff;
+}
+
+.confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--modal-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.confirm-modal {
+  background: var(--bg-color);
+  border: 3px solid var(--border-color);
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.confirm-header {
+  padding: 20px;
+  border-bottom: 2px solid var(--border-color);
+  background: var(--warning-bg);
+}
+
+.confirm-title {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 0;
+  color: #cc6666;
+}
+
+.confirm-body {
+  padding: 20px;
+}
+
+.confirm-body p {
+  margin: 10px 0;
+  line-height: 1.6;
+  color: var(--text-color);
+}
+
+.confirm-warning {
+  font-weight: bold;
+  color: var(--text-secondary);
+  margin-top: 15px !important;
+}
+
+.confirm-danger {
+  font-weight: bold;
+  color: #cc6666;
+  font-size: 16px;
+  margin-top: 15px !important;
+}
+
+.confirm-list {
+  margin: 10px 0;
+  padding-left: 25px;
+  line-height: 1.8;
+  color: var(--text-color);
+}
+
+.confirm-list li {
+  margin: 5px 0;
+}
+
+.confirm-footer {
+  padding: 20px;
+  border-top: 2px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-danger-confirm {
+  background: #cc6666;
+  color: #ffffff;
+  border-color: #cc6666;
+}
+
+.btn-danger-confirm:hover {
+  background: #b85555;
+  border-color: #b85555;
 }
 </style>
 

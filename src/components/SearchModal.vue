@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { searchBangumiAnime, searchBangumiCharacters } from '../utils/bangumi'
 import { searchVndbVisualNovel } from '../utils/vndb'
 import { searchAnidbAnime } from '../utils/anidb'
 import { generateDefaultUrl } from '../utils/url'
+import { saveLastSearchSource, loadLastSearchSource } from '../utils/storage'
 import type { AnimeItem, ApiSource, SearchResult, BgmCharacterSearchResult } from '../types'
 
 const emit = defineEmits<{
@@ -311,12 +312,20 @@ function getResultMeta(result: SearchResult): string {
   return parts.join(' · ')
 }
 
-// 监听 API 源变化，重置搜索状态
+// 监听 API 源变化，重置搜索状态并保存
 watch(apiSource, () => {
   keyword.value = ''
   results.value = []
   error.value = ''
   hasMore.value = true
+  // 保存当前选择的搜索源
+  saveLastSearchSource(apiSource.value)
+})
+
+// 组件挂载时加载上次使用的搜索源
+onMounted(() => {
+  const lastSource = loadLastSearchSource() as ApiSource
+  apiSource.value = lastSource
 })
 
 // 判断图片是否是 AniDB 图片
@@ -514,7 +523,7 @@ function handleImageError(event: Event) {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--modal-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -522,8 +531,8 @@ function handleImageError(event: Event) {
 }
 
 .modal-content {
-  background: #ffffff;
-  border: 2px solid #000000;
+  background: var(--bg-color);
+  border: 2px solid var(--border-color);
   width: 90%;
   max-width: 800px;
   height: 80vh;
@@ -538,19 +547,21 @@ function handleImageError(event: Event) {
   justify-content: space-between;
   align-items: center;
   padding: 20px;
-  border-bottom: 2px solid #000000;
+  border-bottom: 2px solid var(--border-color);
 }
 
 .modal-title {
   font-size: 24px;
   font-weight: bold;
+  color: var(--text-color);
 }
 
 .close-btn {
   width: 30px;
   height: 30px;
-  border: 2px solid #000000;
-  background: #ffffff;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-size: 24px;
   cursor: pointer;
   display: flex;
@@ -561,36 +572,38 @@ function handleImageError(event: Event) {
 }
 
 .close-btn:hover {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .search-box {
   display: flex;
   gap: 10px;
   padding: 20px;
-  border-bottom: 1px solid #cccccc;
+  border-bottom: 1px solid var(--border-light-color);
 }
 
 .search-input {
   flex: 1;
   padding: 10px;
-  border: 2px solid #000000;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg);
+  color: var(--text-color);
   font-size: 16px;
 }
 
 .search-btn {
   padding: 10px 20px;
-  border: 2px solid #000000;
-  background: #000000;
-  color: #ffffff;
+  border: 2px solid var(--border-color);
+  background: var(--border-color);
+  color: var(--bg-color);
   font-weight: bold;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .search-btn:hover:not(:disabled) {
-  background: #333333;
+  opacity: 0.8;
 }
 
 .search-btn:disabled {
@@ -602,34 +615,34 @@ function handleImageError(event: Event) {
   display: flex;
   gap: 10px;
   padding: 15px 20px;
-  border-bottom: 1px solid #cccccc;
-  background: #f5f5f5;
+  border-bottom: 1px solid var(--border-light-color);
+  background: var(--bg-light-color);
 }
 
 .api-btn {
   flex: 1;
   padding: 8px 16px;
-  border: 2px solid #000000;
-  background: #ffffff;
-  color: #000000;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-weight: bold;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .api-btn:hover {
-  background: #f0f0f0;
+  background: var(--bg-hover-color);
 }
 
 .api-btn.active {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .anidb-notice {
   padding: 15px 20px;
-  border-bottom: 1px solid #cccccc;
-  background: #fff9e6;
+  border-bottom: 1px solid var(--border-light-color);
+  background: var(--warning-bg);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -639,12 +652,12 @@ function handleImageError(event: Event) {
 }
 
 .anidb-notice a {
-  color: #0066cc;
+  color: var(--text-link);
   text-decoration: underline;
 }
 
 .anidb-notice a:hover {
-  color: #004499;
+  color: var(--text-link-hover);
 }
 
 .results-container {
@@ -662,24 +675,24 @@ function handleImageError(event: Event) {
 }
 
 .results-container::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--scrollbar-track);
   border-radius: 5px;
 }
 
 .results-container::-webkit-scrollbar-thumb {
-  background: #888;
+  background: var(--scrollbar-thumb);
   border-radius: 5px;
-  border: 2px solid #f1f1f1;
+  border: 2px solid var(--scrollbar-track);
 }
 
 .results-container::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Firefox 滚动条样式 */
 .results-container {
   scrollbar-width: thin;
-  scrollbar-color: #888 #f1f1f1;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 .results-grid {
@@ -689,10 +702,10 @@ function handleImageError(event: Event) {
 }
 
 .result-item {
-  border: 2px solid #000000;
+  border: 2px solid var(--border-color);
   cursor: pointer;
   transition: all 0.2s;
-  background: #ffffff;
+  background: var(--bg-color);
 }
 
 .result-item:hover {
@@ -728,7 +741,7 @@ function handleImageError(event: Event) {
 
 .result-date {
   font-size: 10px;
-  color: #666666;
+  color: var(--text-secondary);
 }
 
 .loading,
@@ -736,27 +749,34 @@ function handleImageError(event: Event) {
 .error-message {
   text-align: center;
   padding: 40px;
-  color: #666666;
+  color: var(--text-secondary);
 }
 
 .error-message {
   color: #ff0000;
 }
 
+@media (prefers-color-scheme: dark) {
+  .error-message {
+    color: #ff6666;
+  }
+}
+
 .load-more-btn {
   width: 100%;
   padding: 10px;
   margin-top: 20px;
-  border: 2px solid #000000;
-  background: #ffffff;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-weight: bold;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .load-more-btn:hover:not(:disabled) {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .load-more-btn:disabled {
