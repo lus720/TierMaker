@@ -2,7 +2,6 @@
 import { ref, watch, onMounted } from 'vue'
 import { searchBangumiAnime, searchBangumiCharacters } from '../utils/bangumi'
 import { searchVndbVisualNovel } from '../utils/vndb'
-import { searchAnidbAnime } from '../utils/anidb'
 import { generateDefaultUrl } from '../utils/url'
 import { saveLastSearchSource, loadLastSearchSource } from '../utils/storage'
 import type { AnimeItem, ApiSource, SearchResult, BgmCharacterSearchResult } from '../types'
@@ -73,11 +72,6 @@ async function handleSearch() {
       const vndbResponse = await searchVndbVisualNovel(keyword.value, 1, 20)
       data = vndbResponse.results
       hasMore.value = vndbResponse.more
-    } else if (apiSource.value === 'anidb') {
-      // AniDB 通过本地标题索引搜索
-      const anidbResponse = await searchAnidbAnime(keyword.value, 1, 20)
-      data = anidbResponse.results
-      hasMore.value = anidbResponse.more
     }
     
     results.value = data
@@ -106,11 +100,6 @@ async function handleSearch() {
 
 async function loadMore() {
   if (loading.value || !hasMore.value) return
-  
-  // AniDB 不支持分页加载
-  if (apiSource.value === 'anidb') {
-    return
-  }
   
   loading.value = true
   
@@ -171,21 +160,12 @@ function handleSelect(result: SearchResult) {
     imageUrl = characterResult.images?.large || characterResult.images?.medium || characterResult.images?.grid || characterResult.image || ''
   } else {
     // 作品搜索结果
-    const bgmResult = result as import('../types').BgmSearchResult | import('../types').VndbSearchResult | import('../types').AnidbSearchResult
+    const bgmResult = result as import('../types').BgmSearchResult | import('../types').VndbSearchResult
     imageUrl = bgmResult.images?.large || bgmResult.images?.medium || bgmResult.images?.grid || bgmResult.images?.small || ''
   }
   
   // 将 id 转换为字符串以便检查（BgmSearchResult 的 id 是 number）
   const resultId = String(result.id)
-  
-  // 调试：输出选择的图片 URL
-  if (resultId.startsWith('anidb_')) {
-    console.debug(`选择 AniDB 结果 ${resultId}:`, {
-      name: result.name,
-      imageUrl,
-      allImages: result.images,
-    })
-  }
   
   // 生成默认的 web 链接
   const defaultUrl = generateDefaultUrl(result.id, isCharacter)
@@ -202,11 +182,6 @@ function handleSelect(result: SearchResult) {
     score: characterResult ? undefined : ((result as any).score || undefined),
     originalUrl: defaultUrl, // 保存默认 web 链接
     originalImage: imageUrl, // 保存默认封面图链接
-  }
-  
-  // 调试：输出最终创建的 AnimeItem
-  if (resultId.startsWith('anidb_') || isCharacter) {
-    console.debug(`创建的 AnimeItem:`, anime)
   }
   
   emit('select', anime)
@@ -241,8 +216,6 @@ function getPlaceholder() {
     return '输入角色名称...'
   } else if (apiSource.value === 'vndb') {
     return '输入视觉小说名称...'
-  } else if (apiSource.value === 'anidb') {
-    return '输入动画名称或 AID...'
   }
   return '输入搜索关键词...'
 }
@@ -254,8 +227,6 @@ function getTitle() {
     return '搜索角色'
   } else if (apiSource.value === 'vndb') {
     return '搜索视觉小说'
-  } else if (apiSource.value === 'anidb') {
-    return '搜索 AniDB 动画'
   }
   return '搜索'
 }
@@ -328,12 +299,6 @@ onMounted(() => {
   apiSource.value = lastSource
 })
 
-// 判断图片是否是 AniDB 图片
-function isAnidbImage(url: string | null | undefined): boolean {
-  if (!url) return false
-  return url.includes('anidb.net')
-}
-
 // 获取图片 URL，如果为空则返回占位图
 function getImageUrl(result: SearchResult): string {
   // 检查是否为角色搜索结果
@@ -347,29 +312,12 @@ function getImageUrl(result: SearchResult): string {
     url = characterResult.images?.large || characterResult.images?.medium || characterResult.images?.grid || characterResult.image || ''
   } else {
     // 作品搜索结果
-    const bgmResult = result as import('../types').BgmSearchResult | import('../types').VndbSearchResult | import('../types').AnidbSearchResult
+    const bgmResult = result as import('../types').BgmSearchResult | import('../types').VndbSearchResult
     url = bgmResult.images?.large || bgmResult.images?.medium || bgmResult.images?.grid || bgmResult.images?.small || ''
-  }
-  
-  // 将 id 转换为字符串以便检查（BgmSearchResult 的 id 是 number）
-  const resultId = String(result.id)
-  
-  // 调试：输出图片 URL 信息
-  if (resultId.startsWith('anidb_') || isCharacter) {
-    console.debug(`${isCharacter ? '角色' : 'AniDB'} 结果 ${resultId}: 图片 URLs =`, {
-      medium: characterResult?.images?.medium || result.images?.medium,
-      grid: characterResult?.images?.grid || result.images?.grid,
-      small: result.images?.small,
-      large: result.images?.large,
-      selected: url,
-    })
   }
   
   // 如果 URL 为空或者是无效的 URL，返回占位图
   if (!url || url.trim() === '') {
-    if (resultId.startsWith('anidb_') || isCharacter) {
-      console.warn(`${isCharacter ? '角色' : 'AniDB'} 结果 ${resultId}: 图片 URL 为空`)
-    }
     return 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj7lm77niYfliqDovb3lpLHotKU8L3RleHQ+PC9zdmc+'
   }
   return url
@@ -390,26 +338,7 @@ function handleImageError(event: Event) {
     complete: img.complete,
   }
   
-  // 尝试从 URL 中提取 AID（如果是 AniDB 图片）
-  if (currentSrc.includes('anidb.net')) {
-    const aidMatch = currentSrc.match(/anidb_(\d+)/)
-    const imageIdMatch = currentSrc.match(/images\/main\/(\d+)\.jpg/)
-    errorInfo.isAnidbImage = true
-    if (aidMatch) errorInfo.aid = aidMatch[1]
-    if (imageIdMatch) errorInfo.imageId = imageIdMatch[1]
-    errorInfo.corsIssue = 'AniDB 图片可能受到 CORS/CORP 限制'
-    errorInfo.suggestion = [
-      '1. 在浏览器地址栏直接打开图片 URL 测试是否能显示',
-      '2. 在 Network 面板查看请求的 HTTP 状态码和响应头',
-      '3. 如果浏览器能打开但网页不能显示，很可能是 Cross-Origin-Resource-Policy 限制',
-      '4. 这种情况下需要后端代理服务器才能解决'
-    ]
-  }
-  
   console.warn('❌ 图片加载失败:', errorInfo)
-  if (errorInfo.isAnidbImage && errorInfo.corsIssue) {
-    console.warn('⚠️ AniDB 图片 CORS 问题提示:', errorInfo.suggestion)
-  }
   
   // 直接使用占位图，不做无意义的 CDN 回退尝试
   img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj7lm77niYfliqDovb3lpLHotKU8L3RleHQ+PC9zdmc+'
@@ -446,17 +375,6 @@ function handleImageError(event: Event) {
         >
           VNDB
         </button>
-        <button
-          class="api-btn"
-          :class="{ active: apiSource === 'anidb' }"
-          @click="apiSource = 'anidb'"
-        >
-          AniDB
-        </button>
-      </div>
-      
-      <div v-if="apiSource === 'anidb'" class="anidb-notice">
-        <p>⚠️ AniDB 目前不太稳定，可能遇到 API 封禁等问题。</p>
       </div>
       
       <div class="search-box">
@@ -489,8 +407,6 @@ function handleImageError(event: Event) {
               :data-original-src="getImageUrl(result)"
               :alt="result.name"
               class="result-image"
-              :crossorigin="isAnidbImage(getImageUrl(result)) ? 'anonymous' : undefined"
-              :referrerpolicy="isAnidbImage(getImageUrl(result)) ? 'no-referrer' : undefined"
               @error="handleImageError"
               @load="() => console.log('✅ 搜索结果图片加载成功:', getImageUrl(result))"
             />
@@ -637,27 +553,6 @@ function handleImageError(event: Event) {
 .api-btn.active {
   background: var(--border-color);
   color: var(--bg-color);
-}
-
-.anidb-notice {
-  padding: 15px 20px;
-  border-bottom: 1px solid var(--border-light-color);
-  background: var(--warning-bg);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.anidb-notice p {
-  margin: 5px 0;
-}
-
-.anidb-notice a {
-  color: var(--text-link);
-  text-decoration: underline;
-}
-
-.anidb-notice a:hover {
-  color: var(--text-link-hover);
 }
 
 .results-container {

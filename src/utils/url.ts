@@ -2,7 +2,7 @@ import type { AnimeItem } from '../types'
 
 /**
  * 根据 id 生成默认的 web 链接
- * @param id 作品ID（可能是数字或字符串格式，如 "anidb_12345", "v12345", "character_12345", 或纯数字）
+ * @param id 作品ID（可能是数字或字符串格式，如 "v12345", "character_12345", 或纯数字）
  * @param isCharacter 是否为角色（默认为 false）
  * @returns 生成的URL，如果无法识别则返回 undefined
  */
@@ -15,12 +15,6 @@ export function generateDefaultUrl(id: number | string | null | undefined, isCha
   if (idStr.startsWith('character_')) {
     const characterId = idStr.replace('character_', '')
     return `https://bgm.tv/character/${characterId}`
-  }
-  
-  // AniDB: id 格式为 "anidb_12345"
-  if (idStr.startsWith('anidb_')) {
-    const aid = idStr.replace('anidb_', '')
-    return `https://anidb.net/anime/${aid}`
   }
   
   // VNDB: id 格式为 "v12345"

@@ -240,7 +240,7 @@ function handleMouseUp(event: MouseEvent) {
             class="form-input"
           />
           <div class="form-hint">
-            留空将根据作品 ID 自动生成链接（Bangumi/VNDB/AniDB）
+            留空将根据作品 ID 自动生成链接（Bangumi/VNDB）
           </div>
         </div>
       </div>

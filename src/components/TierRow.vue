@@ -288,44 +288,13 @@ function handleImageError(event: Event) {
   const itemId = img.getAttribute('data-item-id')
   if (itemId) {
     errorInfo.itemId = itemId
-    // 如果是 AniDB，提取 AID
-    if (itemId.startsWith('anidb_')) {
-      const aid = itemId.replace('anidb_', '')
-      errorInfo.aid = aid
-      errorInfo.isAnidbImage = true
-    }
-  }
-  
-  // 尝试从 URL 中提取图片 ID（如果是 AniDB 图片）
-  if (currentSrc.includes('anidb.net')) {
-    const imageIdMatch = currentSrc.match(/images\/main\/(\d+)\.jpg/)
-    if (imageIdMatch) {
-      errorInfo.imageId = imageIdMatch[1]
-    }
-    errorInfo.corsIssue = 'AniDB 图片可能受到 CORS/CORP 限制'
-    errorInfo.suggestion = [
-      '1. 在浏览器地址栏直接打开图片 URL 测试是否能显示',
-      '2. 在 Network 面板查看请求的 HTTP 状态码和响应头',
-      '3. 如果浏览器能打开但网页不能显示，很可能是 Cross-Origin-Resource-Policy 限制',
-      '4. 这种情况下需要后端代理服务器才能解决'
-    ]
   }
   
   console.warn('❌ 图片加载失败:', errorInfo)
-  if (errorInfo.isAnidbImage && errorInfo.corsIssue) {
-    console.warn('⚠️ AniDB 图片 CORS 问题提示:', errorInfo.suggestion)
-  }
   
   // 直接使用占位图，不做无意义的 CDN 回退尝试
   img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj7lm77niYfliqDovb3lpLHotKU8L3RleHQ+PC9zdmc+'
 }
-
-// 判断图片是否是 AniDB 图片
-function isAnidbImage(url: string | null | undefined): boolean {
-  if (!url) return false
-  return url.includes('anidb.net')
-}
-
 
 // 处理图片点击跳转
 function handleImageClick(item: AnimeItem, e: MouseEvent) {
@@ -511,8 +480,6 @@ function getLongPressProgress(index: number): number {
           :alt="item.name || ''"
           class="item-image"
           :class="{ 'clickable': getItemUrl(item) }"
-          :crossorigin="isAnidbImage(item.image) ? 'anonymous' : undefined"
-          :referrerpolicy="isAnidbImage(item.image) ? 'no-referrer' : undefined"
           @click="handleImageClick(item, $event)"
           @contextmenu="handleImageClick(item, $event)"
           @error="handleImageError"

@@ -247,7 +247,7 @@ export function loadLastSearchSource(): string {
   try {
     const source = localStorage.getItem(LAST_SEARCH_SOURCE_KEY)
     // 验证是否为有效的搜索源
-    const validSources = ['bangumi', 'character', 'vndb', 'anidb']
+    const validSources = ['bangumi', 'character', 'vndb']
     if (source && validSources.includes(source)) {
       return source
     }
