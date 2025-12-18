@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import type { TierConfig } from '../types'
-import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadThemePreference, saveThemePreference } from '../utils/storage'
+import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadThemePreference, saveThemePreference, loadHideItemNames, saveHideItemNames } from '../utils/storage'
 
 const props = defineProps<{
   configs: TierConfig[]
@@ -12,12 +12,14 @@ const emit = defineEmits<{
   update: [configs: TierConfig[]]
   'update-title-font-size': [fontSize: number]
   'update-theme': [theme: 'light' | 'dark' | 'auto']
+  'update-hide-item-names': [hide: boolean]
 }>()
 
 const localConfigs = ref<TierConfig[]>([])
 const bgmToken = ref('')
 const titleFontSize = ref<number>(32)
 const themePreference = ref<'light' | 'dark' | 'auto'>('auto')
+const hideItemNames = ref<boolean>(false)
 const inputValues = ref<Record<number, string>>({})
 const modalContentRef = ref<HTMLElement | null>(null)
 const mouseDownInside = ref(false)
@@ -61,6 +63,7 @@ onMounted(() => {
   }
   titleFontSize.value = loadTitleFontSize()
   themePreference.value = loadThemePreference()
+  hideItemNames.value = loadHideItemNames()
 })
 
 function addTier() {
@@ -140,10 +143,19 @@ function handleThemeChange() {
   emit('update-theme', themePreference.value)
 }
 
+function handleHideItemNamesChange() {
+  // 立即保存隐藏作品名设置
+  console.log('隐藏作品名设置变更:', hideItemNames.value)
+  saveHideItemNames(hideItemNames.value)
+  emit('update-hide-item-names', hideItemNames.value)
+}
+
 function handleClose() {
-  // 关闭设置时，保存当前的主题设置（确保主题设置已保存）
+  // 关闭设置时，保存当前的主题设置和隐藏作品名设置（确保设置已保存）
   saveThemePreference(themePreference.value)
   emit('update-theme', themePreference.value)
+  saveHideItemNames(hideItemNames.value)
+  emit('update-hide-item-names', hideItemNames.value)
   emit('close')
 }
 
@@ -213,6 +225,18 @@ function handleTierIdBlur(config: TierConfig, index: number) {
             <option value="light">浅色模式</option>
             <option value="dark">暗色模式</option>
           </select>
+        </div>
+        <div class="config-item-row" style="margin-top: 15px;">
+          <label for="hide-item-names" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+            <input
+              id="hide-item-names"
+              v-model="hideItemNames"
+              type="checkbox"
+              class="config-checkbox"
+              @change="handleHideItemNamesChange"
+            />
+            <span>隐藏作品名</span>
+          </label>
         </div>
       </div>
       
@@ -579,6 +603,13 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   font-size: 14px;
   cursor: pointer;
   min-width: 150px;
+}
+
+.config-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--border-color);
 }
 
 .config-fontsize {

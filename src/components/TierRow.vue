@@ -11,6 +11,7 @@ const props = defineProps<{
   isDragging?: boolean
   isExportingImage?: boolean
   duplicateItemIds?: Set<string | number>
+  hideItemNames?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -427,7 +428,8 @@ function getLongPressProgress(index: number): number {
       class="tier-item"
       :class="{ 
         'empty': !item.id,
-        'duplicate': item.id && props.duplicateItemIds?.has(item.id)
+        'duplicate': item.id && props.duplicateItemIds?.has(item.id),
+        'hide-name': props.hideItemNames
       }"
       @click="handleItemClick(index)"
       @mousedown="handleMouseDown(item, index, $event)"
@@ -458,7 +460,7 @@ function getLongPressProgress(index: number): number {
       <div v-else class="item-placeholder">
         <span class="placeholder-text">+</span>
       </div>
-      <div v-if="item.name" class="item-name">{{ item.name_cn || item.name }}</div>
+      <div v-if="item.name && !props.hideItemNames" class="item-name">{{ item.name_cn || item.name }}</div>
       <!-- 长按加载条 -->
       <div
         v-if="item.id && getLongPressProgress(index) > 0 && !props.isDragging"
@@ -525,6 +527,16 @@ function getLongPressProgress(index: number): number {
   border: 2px dashed var(--border-light-color);
   cursor: pointer;
   order: 9999; /* 确保空位始终在最后 */
+}
+
+/* 当隐藏作品名时，调整作品项高度（排除空位） */
+.tier-item.hide-name:not(.empty) {
+  height: 133px !important;
+}
+
+/* 当隐藏作品名时，空位也只显示占位符部分（封面） */
+.tier-item.empty.hide-name {
+  height: 133px !important;
 }
 
 /* 重复条目的红色高亮 */

@@ -8,7 +8,7 @@ import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
 import { getItemUrl } from './utils/url'
 import type { Tier, AnimeItem, TierConfig } from './types'
-import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, clearAllData, loadThemePreference, DEFAULT_TIER_CONFIGS, type ExportData } from './utils/storage'
+import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, clearAllData, loadThemePreference, loadHideItemNames, DEFAULT_TIER_CONFIGS, type ExportData } from './utils/storage'
 
 const tiers = ref<Tier[]>([])
 const tierConfigs = ref<TierConfig[]>([])
@@ -22,6 +22,7 @@ const currentEditItem = ref<AnimeItem | null>(null)
 const isLongPressEdit = ref(false)
 const title = ref<string>('Tier List')
 const titleFontSize = ref<number>(32)
+const hideItemNames = ref<boolean>(false)
 const isDragging = ref(false) // 全局拖动状态
 const tierListRef = ref<InstanceType<typeof TierList> | null>(null)
 
@@ -122,6 +123,7 @@ onMounted(() => {
   initTheme()
   title.value = loadTitle()
   titleFontSize.value = loadTitleFontSize()
+  hideItemNames.value = loadHideItemNames()
   tierConfigs.value = loadTierConfigs()
   tiers.value = loadTierData()
   
@@ -391,6 +393,12 @@ function handleUpdateTitleFontSize(newFontSize: number) {
 
 function handleUpdateTheme(theme: 'light' | 'dark' | 'auto') {
   applyTheme(theme)
+}
+
+function handleUpdateHideItemNames(hide: boolean) {
+  console.log('App.vue 接收到隐藏作品名更新:', hide)
+  hideItemNames.value = hide
+  console.log('App.vue hideItemNames.value:', hideItemNames.value)
 }
 
 function handleClearAll() {
@@ -1273,6 +1281,7 @@ async function cropImageWithCanvas(img: HTMLImageElement): Promise<string | null
       :is-dragging="isDragging"
       :is-exporting-image="isExportingImage"
       :duplicate-item-ids="duplicateItemIds"
+      :hide-item-names="hideItemNames"
       @add-item="handleAddItem"
       @add-row="handleAddRow"
       @delete-row="handleDeleteRow"
@@ -1286,6 +1295,7 @@ async function cropImageWithCanvas(img: HTMLImageElement): Promise<string | null
 
     <SearchModal
       v-if="showSearch"
+      :hide-item-names="hideItemNames"
       @close="showSearch = false"
       @select="handleSelectAnime"
     />
@@ -1297,6 +1307,7 @@ async function cropImageWithCanvas(img: HTMLImageElement): Promise<string | null
       @update="handleUpdateConfigs"
       @update-title-font-size="handleUpdateTitleFontSize"
       @update-theme="handleUpdateTheme"
+      @update-hide-item-names="handleUpdateHideItemNames"
     />
     
     <!-- 清空数据确认弹窗 -->

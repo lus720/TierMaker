@@ -7,6 +7,7 @@ const TITLE_KEY = 'tier-list-title'
 const TITLE_FONT_SIZE_KEY = 'tier-list-title-font-size'
 const LAST_SEARCH_SOURCE_KEY = 'last-search-source'
 const THEME_KEY = 'theme-preference'
+const HIDE_ITEM_NAMES_KEY = 'hide-item-names'
 
 /**
  * 默认评分等级配置
@@ -283,6 +284,32 @@ export function loadThemePreference(): 'light' | 'dark' | 'auto' {
     console.error('加载主题设置失败:', error)
   }
   return 'auto' // 默认跟随系统
+}
+
+/**
+ * 保存隐藏作品名设置
+ */
+export function saveHideItemNames(hide: boolean): void {
+  try {
+    localStorage.setItem(HIDE_ITEM_NAMES_KEY, JSON.stringify(hide))
+  } catch (error) {
+    console.error('保存隐藏作品名设置失败:', error)
+  }
+}
+
+/**
+ * 加载隐藏作品名设置
+ */
+export function loadHideItemNames(): boolean {
+  try {
+    const saved = localStorage.getItem(HIDE_ITEM_NAMES_KEY)
+    if (saved !== null) {
+      return JSON.parse(saved)
+    }
+  } catch (error) {
+    console.error('加载隐藏作品名设置失败:', error)
+  }
+  return false // 默认显示作品名
 }
 
 /**

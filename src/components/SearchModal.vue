@@ -6,6 +6,10 @@ import { generateDefaultUrl } from '../utils/url'
 import { saveLastSearchSource, loadLastSearchSource } from '../utils/storage'
 import type { AnimeItem, ApiSource, SearchResult, BgmCharacterSearchResult } from '../types'
 
+const props = defineProps<{
+  hideItemNames?: boolean
+}>()
+
 const emit = defineEmits<{
   close: []
   select: [anime: AnimeItem]
@@ -603,7 +607,7 @@ function handleImageError(event: Event) {
               @error="handleImageError"
               @load="() => console.log('✅ 搜索结果图片加载成功:', getImageUrl(result))"
             />
-            <div class="result-info">
+            <div v-if="!props.hideItemNames" class="result-info">
               <div class="result-name">
                 {{ apiSource === 'character' ? ((result as BgmCharacterSearchResult).nameCn || result.name) : (result.name_cn || result.name) }}
               </div>

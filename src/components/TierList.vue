@@ -9,6 +9,7 @@ const props = defineProps<{
   isDragging?: boolean
   isExportingImage?: boolean
   duplicateItemIds?: Set<string | number>
+  hideItemNames?: boolean
 }>()
 
 // 暴露方法给父组件调用
@@ -150,6 +151,7 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
           :is-dragging="props.isDragging"
           :is-exporting-image="props.isExportingImage"
           :duplicate-item-ids="props.duplicateItemIds"
+          :hide-item-names="props.hideItemNames"
           @add-item="(index) => emit('add-item', tier.id, row.id, index)"
           @delete-item="(index) => emit('delete-item', tier.id, row.id, index)"
           @edit-item="(item, index, isLongPress) => emit('edit-item', tier.id, row.id, item, index, isLongPress)"
@@ -223,6 +225,12 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
 
 .tier-row-wrapper:first-child {
   border-top: none;
+}
+
+/* 当隐藏作品名时，缩短行间距 */
+.tier-group:has(.tier-item.hide-name) .tier-row-wrapper {
+  border-top-width: 0;
+  margin-top: -1px;
 }
 
 .tier-label {
