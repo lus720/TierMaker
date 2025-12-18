@@ -1295,7 +1295,6 @@ async function cropImageWithCanvas(img: HTMLImageElement): Promise<string | null
 
     <SearchModal
       v-if="showSearch"
-      :hide-item-names="hideItemNames"
       @close="showSearch = false"
       @select="handleSelectAnime"
     />
