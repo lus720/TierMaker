@@ -22,6 +22,12 @@ const hasMore = ref(true)
 const modalContentRef = ref<HTMLElement | null>(null)
 const mouseDownInside = ref(false)
 
+// 本地上传相关状态
+const showLocalUpload = ref(false)
+const uploadedImage = ref<string | null>(null)
+const customTitle = ref('')
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
 // 防抖搜索
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
 watch([keyword, apiSource], () => {
@@ -216,6 +222,8 @@ function getPlaceholder() {
     return '输入角色名称...'
   } else if (apiSource.value === 'vndb') {
     return '输入视觉小说名称...'
+  } else if (apiSource.value === 'local') {
+    return '输入自定义标题...'
   }
   return '输入搜索关键词...'
 }
@@ -227,6 +235,8 @@ function getTitle() {
     return '搜索角色'
   } else if (apiSource.value === 'vndb') {
     return '搜索视觉小说'
+  } else if (apiSource.value === 'local') {
+    return '本地上传'
   }
   return '搜索'
 }
@@ -283,14 +293,135 @@ function getResultMeta(result: SearchResult): string {
   return parts.join(' · ')
 }
 
+// 处理文件（用于上传和拖拽）
+function processFile(file: File) {
+  // 检查文件类型
+  if (!file.type.startsWith('image/')) {
+    error.value = '请上传图片文件'
+    return
+  }
+  
+  // 检查文件大小（限制为 10MB）
+  if (file.size > 10 * 1024 * 1024) {
+    error.value = '图片大小不能超过 10MB'
+    return
+  }
+  
+  // 读取文件并转换为 base64
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const result = e.target?.result as string
+    uploadedImage.value = result
+    error.value = ''
+    
+    // 如果没有自定义标题，使用文件名（去掉扩展名）
+    if (!customTitle.value.trim()) {
+      const fileName = file.name.replace(/\.[^/.]+$/, '')
+      customTitle.value = fileName
+    }
+  }
+  reader.onerror = () => {
+    error.value = '图片读取失败'
+  }
+  reader.readAsDataURL(file)
+}
+
+// 处理文件上传
+function handleFileUpload(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+  processFile(file)
+}
+
+// 处理拖拽上传
+function handleDragOver(event: DragEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+function handleDragEnter(event: DragEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+function handleDragLeave(event: DragEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+function handleDrop(event: DragEvent) {
+  event.preventDefault()
+  event.stopPropagation()
+  
+  const files = event.dataTransfer?.files
+  if (files && files.length > 0) {
+    processFile(files[0])
+  }
+}
+
+// 处理本地上传确认
+function handleLocalUploadConfirm() {
+  if (!uploadedImage.value) {
+    error.value = '请先上传图片'
+    return
+  }
+  
+  if (!customTitle.value.trim()) {
+    error.value = '请输入标题'
+    return
+  }
+  
+  // 生成唯一的 ID（使用时间戳）
+  const itemId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  
+  const anime: AnimeItem = {
+    id: itemId,
+    name: customTitle.value.trim(),
+    image: uploadedImage.value,
+    originalImage: uploadedImage.value,
+  }
+  
+  emit('select', anime)
+  
+  // 重置状态
+  uploadedImage.value = null
+  customTitle.value = ''
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
+}
+
+// 清除上传的图片
+function clearUploadedImage() {
+  uploadedImage.value = null
+  customTitle.value = ''
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
+  error.value = ''
+}
+
 // 监听 API 源变化，重置搜索状态并保存
 watch(apiSource, () => {
   keyword.value = ''
   results.value = []
   error.value = ''
   hasMore.value = true
-  // 保存当前选择的搜索源
-  saveLastSearchSource(apiSource.value)
+  
+  // 切换到本地上传时，重置上传状态
+  if (apiSource.value === 'local') {
+    uploadedImage.value = null
+    customTitle.value = ''
+    if (fileInputRef.value) {
+      fileInputRef.value.value = ''
+    }
+  }
+  
+  // 保存当前选择的搜索源（不保存 local）
+  if (apiSource.value !== 'local') {
+    saveLastSearchSource(apiSource.value)
+  }
 })
 
 // 组件挂载时加载上次使用的搜索源
@@ -375,22 +506,84 @@ function handleImageError(event: Event) {
         >
           VNDB
         </button>
-      </div>
-      
-      <div class="search-box">
-        <input
-          v-model="keyword"
-          type="text"
-          :placeholder="getPlaceholder()"
-          class="search-input"
-          @keydown.enter="handleSearch"
-        />
-        <button class="search-btn" @click="handleSearch" :disabled="loading">
-          {{ loading ? '搜索中...' : '搜索' }}
+        <button
+          class="api-btn"
+          :class="{ active: apiSource === 'local' }"
+          @click="apiSource = 'local'"
+        >
+          本地上传
         </button>
       </div>
       
-      <div class="results-container">
+      <!-- 本地上传界面 -->
+      <div v-if="apiSource === 'local'" class="local-upload-container">
+        <div class="upload-section">
+          <div 
+            class="upload-area" 
+            @click="fileInputRef?.click()"
+            @dragover.prevent="handleDragOver"
+            @dragenter.prevent="handleDragEnter"
+            @dragleave.prevent="handleDragLeave"
+            @drop.prevent="handleDrop"
+          >
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept="image/*"
+              style="display: none"
+              @change="handleFileUpload"
+            />
+            <div v-if="!uploadedImage" class="upload-placeholder">
+              <div class="upload-icon">📷</div>
+              <div class="upload-text">点击选择图片或拖拽图片到此处</div>
+              <div class="upload-hint">支持 JPG、PNG、GIF 等格式，最大 10MB</div>
+            </div>
+            <div v-else class="upload-preview">
+              <img :src="uploadedImage" alt="预览" class="preview-image" />
+              <button class="remove-image-btn" @click.stop="clearUploadedImage" title="移除图片">×</button>
+            </div>
+          </div>
+          
+          <div class="title-input-section">
+            <label for="custom-title" class="title-label">自定义标题：</label>
+            <input
+              id="custom-title"
+              v-model="customTitle"
+              type="text"
+              placeholder="输入标题..."
+              class="title-input"
+              @keydown.enter="handleLocalUploadConfirm"
+            />
+          </div>
+          
+          <div class="upload-actions">
+            <button 
+              class="confirm-upload-btn" 
+              @click="handleLocalUploadConfirm"
+              :disabled="!uploadedImage || !customTitle.trim()"
+            >
+              确认添加
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 搜索界面 -->
+      <template v-else>
+        <div class="search-box">
+          <input
+            v-model="keyword"
+            type="text"
+            :placeholder="getPlaceholder()"
+            class="search-input"
+            @keydown.enter="handleSearch"
+          />
+          <button class="search-btn" @click="handleSearch" :disabled="loading">
+            {{ loading ? '搜索中...' : '搜索' }}
+          </button>
+        </div>
+        
+        <div class="results-container">
         <div v-if="error" class="error-message">{{ error }}</div>
         <div v-else-if="loading && results.length === 0" class="loading">搜索中...</div>
         <div v-else-if="results.length === 0 && keyword" class="empty">未找到结果</div>
@@ -428,6 +621,7 @@ function handleImageError(event: Event) {
           {{ loading ? '加载中...' : '加载更多' }}
         </button>
       </div>
+      </template>
     </div>
   </div>
 </template>
@@ -675,6 +869,156 @@ function handleImageError(event: Event) {
 }
 
 .load-more-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 本地上传样式 */
+.local-upload-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.upload-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.upload-area {
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  padding: 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg-light-color);
+  position: relative;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-area:hover {
+  border-color: var(--text-color);
+  background: var(--bg-hover-color);
+}
+
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.upload-icon {
+  font-size: 48px;
+  opacity: 0.5;
+}
+
+.upload-text {
+  font-size: 16px;
+  font-weight: bold;
+  color: var(--text-color);
+}
+
+.upload-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.upload-preview {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.preview-image {
+  width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  border: 2px solid var(--border-color);
+  border-radius: 4px;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
+  font-size: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.remove-image-btn:hover {
+  background: var(--border-color);
+  color: var(--bg-color);
+}
+
+.title-input-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.title-label {
+  font-size: 14px;
+  font-weight: bold;
+  color: var(--text-color);
+}
+
+.title-input {
+  padding: 10px;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg);
+  color: var(--text-color);
+  font-size: 16px;
+  border-radius: 4px;
+}
+
+.title-input:focus {
+  outline: none;
+  border-color: var(--text-color);
+}
+
+.upload-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.confirm-upload-btn {
+  padding: 12px 24px;
+  border: 2px solid var(--border-color);
+  background: var(--border-color);
+  color: var(--bg-color);
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
+.confirm-upload-btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.confirm-upload-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
