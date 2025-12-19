@@ -151,7 +151,6 @@ function handleThemeChange() {
 
 function handleHideItemNamesChange() {
   // 立即保存隐藏作品名设置
-  console.log('隐藏作品名设置变更:', hideItemNames.value)
   saveHideItemNames(hideItemNames.value)
   emit('update-hide-item-names', hideItemNames.value)
 }

@@ -214,7 +214,6 @@ function handleItemDelete(index: number, e: Event) {
 
 function handleImageLoad(event: Event) {
   const img = event.target as HTMLImageElement
-  console.log('✅ 图片加载成功:', img.src)
   
   // 获取对应的 item 信息
   const itemId = img.getAttribute('data-item-id')

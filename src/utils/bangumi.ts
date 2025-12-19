@@ -65,18 +65,15 @@ async function fetchWithTimeout(
 ): Promise<Response> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => {
-    console.warn(`请求超时（${timeout}ms），正在中止请求...`)
     controller.abort()
   }, timeout)
 
   try {
-    console.debug('fetchWithTimeout: 开始请求', url)
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
     })
     clearTimeout(timeoutId)
-    console.debug('fetchWithTimeout: 请求完成', response.status)
     return response
   } catch (error: any) {
     clearTimeout(timeoutId)
@@ -107,17 +104,6 @@ export async function searchBangumiAnime(
     }
 
     const headers = getRequestHeaders()
-    console.debug('Bangumi 搜索请求:', {
-      url,
-      keyword,
-      offset,
-      limit,
-      headers,
-      body: requestBody,
-      token: getAccessToken() ? '已设置' : '未设置',
-    })
-
-    console.debug('开始发送请求...', new Date().toISOString())
     
     const response = await fetchWithTimeout(
       url,
@@ -126,17 +112,8 @@ export async function searchBangumiAnime(
         headers,
         body: JSON.stringify(requestBody),
       },
-      10000 // 10 秒超时（缩短超时时间以便更快发现问题）
+      10000 // 10 秒超时
     )
-
-    console.debug('收到响应:', new Date().toISOString())
-
-    console.debug('Bangumi API 响应:', {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok,
-      headers: Object.fromEntries(response.headers.entries()),
-    })
 
     if (!response.ok) {
       // 尝试读取错误响应体
@@ -163,24 +140,14 @@ export async function searchBangumiAnime(
     }
 
     const result = await response.json()
-    console.debug('Bangumi API 返回数据:', {
-      hasData: !!result.data,
-      dataLength: result.data?.length || 0,
-      resultKeys: Object.keys(result),
-      firstItem: result.data?.[0],
-    })
 
     if (!result.data) {
-      console.warn('Bangumi API 返回数据格式异常:', result)
       return []
     }
 
     return (result.data || []) as BgmSearchResult[]
   } catch (error: any) {
     console.error('Bangumi 搜索错误:', error)
-    console.error('错误类型:', error.constructor.name)
-    console.error('错误消息:', error.message)
-    console.error('错误堆栈:', error.stack)
     
     if (error instanceof BangumiError) {
       throw error
@@ -250,16 +217,6 @@ export async function searchBangumiCharacters(
     }
 
     const headers = getRequestHeaders()
-    console.debug('Bangumi 角色搜索请求:', {
-      url,
-      keyword,
-      offset,
-      limit,
-      headers,
-      body: requestBody,
-      token: getAccessToken() ? '已设置' : '未设置',
-    })
-
     const response = await fetchWithTimeout(
       url,
       {
@@ -269,12 +226,6 @@ export async function searchBangumiCharacters(
       },
       10000 // 10 秒超时
     )
-
-    console.debug('Bangumi 角色搜索响应:', {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok,
-    })
 
     if (!response.ok) {
       let errorMessage = `请求失败: ${response.status} ${response.statusText}`
@@ -300,13 +251,8 @@ export async function searchBangumiCharacters(
     }
 
     const result = await response.json()
-    console.debug('Bangumi 角色搜索返回数据:', {
-      hasData: !!result.data,
-      dataLength: result.data?.length || 0,
-    })
 
     if (!result.data) {
-      console.warn('Bangumi API 返回数据格式异常:', result)
       return []
     }
 

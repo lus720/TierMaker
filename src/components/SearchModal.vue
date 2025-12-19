@@ -52,25 +52,16 @@ async function handleSearch() {
   page.value = 1
   hasMore.value = true
   
-  console.debug('开始搜索:', {
-    apiSource: apiSource.value,
-    keyword: keyword.value,
-  })
-  
   try {
     let data: SearchResult[] = []
     
     if (apiSource.value === 'bangumi') {
-      console.debug('调用 Bangumi API...')
       data = await searchBangumiAnime(keyword.value, 0, 20)
-      console.debug('Bangumi API 返回:', data.length, '个结果')
       if (data.length < 20) {
         hasMore.value = false
       }
     } else if (apiSource.value === 'character') {
-      console.debug('调用 Bangumi 角色搜索 API...')
       data = await searchBangumiCharacters(keyword.value, 0, 10)
-      console.debug('Bangumi 角色搜索 API 返回:', data.length, '个结果')
       if (data.length < 10) {
         hasMore.value = false
       }
@@ -81,25 +72,11 @@ async function handleSearch() {
     }
     
     results.value = data
-    
-    // 调试：输出搜索结果
-    console.debug('搜索结果:', {
-      apiSource: apiSource.value,
-      keyword: keyword.value,
-      count: data.length,
-      results: data.slice(0, 3), // 只输出前3个结果
-    })
   } catch (e: any) {
     console.error('搜索错误:', e)
-    console.error('错误详情:', {
-      name: e.name,
-      message: e.message,
-      stack: e.stack,
-    })
     error.value = e.message || '搜索失败'
     results.value = []
   } finally {
-    console.debug('搜索完成，重置 loading 状态')
     loading.value = false
   }
 }
@@ -601,7 +578,7 @@ function handleImageError(event: Event) {
               :alt="result.name"
               class="result-image"
               @error="handleImageError"
-              @load="() => console.log('✅ 搜索结果图片加载成功:', getImageUrl(result))"
+              @load="() => {}"
             />
             <div class="result-info">
               <div class="result-name">

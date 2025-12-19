@@ -407,9 +407,7 @@ function handleUpdateTheme(theme: 'light' | 'dark' | 'auto') {
 }
 
 function handleUpdateHideItemNames(hide: boolean) {
-  console.log('App.vue 接收到隐藏作品名更新:', hide)
   hideItemNames.value = hide
-  console.log('App.vue hideItemNames.value:', hideItemNames.value)
 }
 
 function handleUpdateExportScale(scale: number) {
@@ -927,7 +925,6 @@ async function handleExportPDF() {
           if (item.id) {
             const url = getItemUrl(item)
             if (!url) {
-              // console.warn(`作品项没有URL:`, item.id, item.name)
               return
             }
             
@@ -961,9 +958,6 @@ async function handleExportPDF() {
                 rect.height
               )
               itemLinks.push({ url, rect: relativeRect, item })
-              // console.log(`✅ 找到链接:`, item.name || item.id, url)
-            } else {
-              // console.warn(`❌ 找不到DOM元素:`, item.id, item.name, row.id, itemIndex)
             }
           }
         })
@@ -972,7 +966,6 @@ async function handleExportPDF() {
     
     const totalItems = tiers.value.reduce((sum, tier) => 
       sum + tier.rows.reduce((rowSum, row) => rowSum + row.items.filter(item => item.id).length, 0), 0)
-    // console.log(`📊 总共收集到 ${itemLinks.length} 个链接，总作品数: ${totalItems}`)
     
     // 使用 html2canvas 生成图片（极速版：使用CORS直连）
     const currentScale = exportScale.value // 使用用户设置的导出倍率
@@ -1138,7 +1131,6 @@ async function handleExportPDF() {
       )
     })
     
-    // console.log(`📄 PDF尺寸: ${pdfWidth}x${pdfHeight}mm, Canvas尺寸: ${canvasWidth}x${canvasHeight}px (scale=${htmlScale})`)
     
     // 保存PDF
     pdf.save(`tier-list-${new Date().toISOString().split('T')[0]}.pdf`)
