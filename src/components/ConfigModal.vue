@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import type { TierConfig } from '../types'
-import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadThemePreference, saveThemePreference, loadHideItemNames, saveHideItemNames } from '../utils/storage'
+import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadThemePreference, saveThemePreference, loadHideItemNames, saveHideItemNames, loadExportScale, saveExportScale, DEFAULT_TIER_CONFIGS } from '../utils/storage'
 
 const props = defineProps<{
   configs: TierConfig[]
@@ -13,6 +13,8 @@ const emit = defineEmits<{
   'update-title-font-size': [fontSize: number]
   'update-theme': [theme: 'light' | 'dark' | 'auto']
   'update-hide-item-names': [hide: boolean]
+  'update-export-scale': [scale: number]
+  'reset-settings': []
 }>()
 
 const localConfigs = ref<TierConfig[]>([])
@@ -20,6 +22,7 @@ const bgmToken = ref('')
 const titleFontSize = ref<number>(32)
 const themePreference = ref<'light' | 'dark' | 'auto'>('auto')
 const hideItemNames = ref<boolean>(false)
+const exportScale = ref<number>(4)
 const inputValues = ref<Record<number, string>>({})
 const modalContentRef = ref<HTMLElement | null>(null)
 const mouseDownInside = ref(false)
@@ -58,6 +61,7 @@ watch(() => props.configs, (newConfigs) => {
 
 onMounted(() => {
   const savedToken = loadBgmToken()
+  exportScale.value = loadExportScale()
   if (savedToken) {
     bgmToken.value = savedToken
   }
@@ -126,8 +130,10 @@ function handleSave() {
   saveBgmToken(bgmToken.value || null)
   saveTitleFontSize(titleFontSize.value)
   saveThemePreference(themePreference.value)
+  saveExportScale(exportScale.value)
   emit('update-title-font-size', titleFontSize.value)
   emit('update-theme', themePreference.value)
+  emit('update-export-scale', exportScale.value)
   emit('close')
 }
 
@@ -148,6 +154,55 @@ function handleHideItemNamesChange() {
   console.log('隐藏作品名设置变更:', hideItemNames.value)
   saveHideItemNames(hideItemNames.value)
   emit('update-hide-item-names', hideItemNames.value)
+}
+
+function handleExportScaleInput(event: Event) {
+  const target = event.target as HTMLInputElement
+  let value = parseInt(target.value, 10)
+  
+  // 如果输入的不是整数或超出范围，限制在有效范围内
+  if (isNaN(value) || value < 1) {
+    value = 1
+  } else if (value > 6) {
+    value = 6
+  } else {
+    // 确保是整数
+    value = Math.round(value)
+  }
+  
+  exportScale.value = value
+  target.value = value.toString()
+}
+
+function handleExportScaleBlur(event: Event) {
+  const target = event.target as HTMLInputElement
+  let value = parseInt(target.value, 10)
+  
+  // 失焦时验证并修正值
+  if (isNaN(value) || value < 1) {
+    value = 1
+  } else if (value > 6) {
+    value = 6
+  } else {
+    value = Math.round(value)
+  }
+  
+  exportScale.value = value
+  target.value = value.toString()
+}
+
+function handleResetSettings() {
+  // 直接执行重置，不需要确认
+  emit('reset-settings')
+  
+  // 立即更新本地显示的值（configs 会通过 watch 自动更新）
+  exportScale.value = 4
+  titleFontSize.value = 32
+  themePreference.value = 'auto'
+  hideItemNames.value = false
+  
+  // 不关闭弹窗，让用户看到重置后的值
+  // configs 会通过 props 的 watch 自动更新
 }
 
 function handleClose() {
@@ -225,6 +280,22 @@ function handleTierIdBlur(config: TierConfig, index: number) {
             <option value="light">浅色模式</option>
             <option value="dark">暗色模式</option>
           </select>
+        </div>
+        <div class="config-item-row" style="margin-top: 15px;">
+          <label for="export-scale">导出分辨率倍率:</label>
+          <input
+            id="export-scale"
+            v-model.number="exportScale"
+            type="number"
+            min="1"
+            max="6"
+            step="1"
+            class="config-input"
+            style="max-width: 120px;"
+            @input="handleExportScaleInput"
+            @blur="handleExportScaleBlur"
+          />
+          <span style="margin-left: 10px; color: var(--text-secondary);">倍 (推荐: 4倍，范围: 1-6)</span>
         </div>
         <div class="config-item-row" style="margin-top: 15px;">
           <label for="hide-item-names" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
@@ -342,7 +413,10 @@ function handleTierIdBlur(config: TierConfig, index: number) {
       </div>
       
       <div class="modal-footer">
-        <button class="add-btn" @click="addTier">添加等级</button>
+        <div class="footer-left">
+          <button class="btn btn-reset" @click="handleResetSettings">重置设置</button>
+          <button class="add-btn" @click="addTier">添加等级</button>
+        </div>
         <div class="footer-actions">
           <button class="btn btn-cancel" @click="handleClose">取消</button>
           <button class="btn btn-save" @click="handleSave">保存</button>
@@ -688,10 +762,16 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   padding: 20px;
   border-top: 2px solid var(--border-color);
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   flex-shrink: 0;
   gap: 10px;
+}
+
+.footer-left {
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
 .add-btn {
@@ -747,6 +827,17 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 }
 
 .btn-danger:hover {
+  background: #cc6666;
+  color: #ffffff;
+}
+
+.btn-reset {
+  background: var(--bg-color);
+  color: #cc6666;
+  border-color: #cc6666;
+}
+
+.btn-reset:hover {
   background: #cc6666;
   color: #ffffff;
 }

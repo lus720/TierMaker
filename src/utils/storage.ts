@@ -8,6 +8,7 @@ const TITLE_FONT_SIZE_KEY = 'tier-list-title-font-size'
 const LAST_SEARCH_SOURCE_KEY = 'last-search-source'
 const THEME_KEY = 'theme-preference'
 const HIDE_ITEM_NAMES_KEY = 'hide-item-names'
+const EXPORT_SCALE_KEY = 'export-scale'
 
 /**
  * 默认评分等级配置
@@ -313,7 +314,85 @@ export function loadHideItemNames(): boolean {
 }
 
 /**
+ * 保存导出倍率设置
+ */
+export function saveExportScale(scale: number): void {
+  try {
+    // 限制范围在 1-6 之间，只支持整数
+    const validScale = Math.max(1, Math.min(6, Math.round(scale)))
+    localStorage.setItem(EXPORT_SCALE_KEY, validScale.toString())
+  } catch (error) {
+    console.error('保存导出倍率设置失败:', error)
+  }
+}
+
+/**
+ * 加载导出倍率设置
+ * 返回默认值 4 如果未设置
+ */
+export function loadExportScale(): number {
+  try {
+    const saved = localStorage.getItem(EXPORT_SCALE_KEY)
+    if (saved) {
+      const parsed = parseInt(saved, 10)
+      if (!isNaN(parsed) && parsed >= 1 && parsed <= 6) {
+        return parsed
+      }
+    }
+  } catch (error) {
+    console.error('加载导出倍率设置失败:', error)
+  }
+  return 4 // 默认 4 倍
+}
+
+/**
+ * 清空作品数据和标题（保留设置）
+ */
+export function clearItemsAndTitle(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(TITLE_KEY)
+    localStorage.removeItem(TITLE_FONT_SIZE_KEY)
+    localStorage.removeItem(LAST_SEARCH_SOURCE_KEY)
+    // 注意：保留所有设置（主题、导出倍率、隐藏作品名、BGM Token、评分等级配置）
+  } catch (error) {
+    console.error('清空作品数据失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 重置所有设置（保留作品数据）
+ */
+export function resetSettings(): void {
+  try {
+    // 重置标题字体大小
+    saveTitleFontSize(32)
+    
+    // 重置主题
+    saveThemePreference('auto')
+    
+    // 重置隐藏作品名
+    saveHideItemNames(false)
+    
+    // 重置导出倍率
+    saveExportScale(4)
+    
+    // 重置评分等级配置
+    saveTierConfigs(DEFAULT_TIER_CONFIGS)
+    
+    // 注意：不重置标题，保留用户设置的标题
+    // 注意：不清空 BGM_TOKEN_KEY，因为这是用户配置
+    // 注意：不清空作品数据（STORAGE_KEY），只重置设置
+  } catch (error) {
+    console.error('重置设置失败:', error)
+    throw error
+  }
+}
+
+/**
  * 清空所有数据（包括作品、配置、标题等）
+ * @deprecated 使用 clearItemsAndTitle() 代替，此函数保留用于向后兼容
  */
 export function clearAllData(): void {
   try {

@@ -8,7 +8,7 @@ import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
 import { getItemUrl } from './utils/url'
 import type { Tier, AnimeItem, TierConfig } from './types'
-import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, clearAllData, loadThemePreference, loadHideItemNames, DEFAULT_TIER_CONFIGS, type ExportData } from './utils/storage'
+import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, clearItemsAndTitle, resetSettings, loadThemePreference, loadHideItemNames, loadExportScale, DEFAULT_TIER_CONFIGS, type ExportData } from './utils/storage'
 
 const tiers = ref<Tier[]>([])
 const tierConfigs = ref<TierConfig[]>([])
@@ -23,8 +23,10 @@ const isLongPressEdit = ref(false)
 const title = ref<string>('Tier List')
 const titleFontSize = ref<number>(32)
 const hideItemNames = ref<boolean>(false)
+const exportScale = ref<number>(4)
 const isDragging = ref(false) // 全局拖动状态
 const tierListRef = ref<InstanceType<typeof TierList> | null>(null)
+const configModalKey = ref<number>(0) // 用于强制重新渲染 ConfigModal
 
 // 检测重复的条目（根据ID）
 const duplicateItemIds = computed(() => {
@@ -124,6 +126,7 @@ onMounted(() => {
   title.value = loadTitle()
   titleFontSize.value = loadTitleFontSize()
   hideItemNames.value = loadHideItemNames()
+  exportScale.value = loadExportScale()
   tierConfigs.value = loadTierConfigs()
   tiers.value = loadTierData()
   
@@ -401,17 +404,17 @@ function handleUpdateHideItemNames(hide: boolean) {
   console.log('App.vue hideItemNames.value:', hideItemNames.value)
 }
 
+function handleUpdateExportScale(scale: number) {
+  exportScale.value = scale
+}
+
 function handleClearAll() {
   try {
-    // 清空所有存储的数据
-    clearAllData()
+    // 只清空作品数据和标题，保留所有设置
+    clearItemsAndTitle()
     
-    // 重置为默认配置
-    tierConfigs.value = JSON.parse(JSON.stringify(DEFAULT_TIER_CONFIGS))
-    saveTierConfigs(tierConfigs.value)
-    
-    // 重置 tiers 为默认结构
-    tiers.value = DEFAULT_TIER_CONFIGS.map(config => ({
+    // 重置 tiers 为默认结构（清空所有作品）
+    tiers.value = tierConfigs.value.map(config => ({
       id: config.id,
       rows: [{
         id: `${config.id}-row-0`,
@@ -435,6 +438,66 @@ function handleClearAll() {
   } catch (error) {
     console.error('清空数据失败:', error)
     alert('清空数据失败，请刷新页面重试')
+  }
+}
+
+function handleResetSettings() {
+  try {
+    // 重置所有设置，但保留作品数据和标题
+    resetSettings()
+    
+    // 重置评分等级配置
+    tierConfigs.value = JSON.parse(JSON.stringify(DEFAULT_TIER_CONFIGS))
+    saveTierConfigs(tierConfigs.value)
+    
+    // 重置标题字体大小
+    titleFontSize.value = 32
+    saveTitleFontSize(titleFontSize.value)
+    
+    // 重置主题
+    const theme = loadThemePreference()
+    applyTheme(theme)
+    
+    // 重置隐藏作品名
+    hideItemNames.value = false
+    
+    // 重置导出倍率
+    exportScale.value = 4
+    
+    // 注意：不重置标题，保留用户设置的标题
+    
+    // 同步 tiers 和 tierConfigs（确保结构一致）
+    const configIds = new Set(tierConfigs.value.map(c => c.id))
+    tiers.value = tiers.value.filter(t => configIds.has(t.id))
+    
+    tierConfigs.value.forEach(config => {
+      if (!tiers.value.find(t => t.id === config.id)) {
+        tiers.value.push({
+          id: config.id,
+          rows: [{
+            id: `${config.id}-row-0`,
+            items: [],
+          }],
+        })
+      }
+    })
+    
+    tiers.value.sort((a, b) => {
+      const aOrder = tierConfigs.value.find(c => c.id === a.id)?.order ?? 999
+      const bOrder = tierConfigs.value.find(c => c.id === b.id)?.order ?? 999
+      return aOrder - bOrder
+    })
+    
+    saveTierData(tiers.value)
+    
+    // 重置成功，刷新设置页面内容让用户注意到重置已完成
+    if (showConfig.value) {
+      // 通过改变 key 强制重新渲染 ConfigModal，实现重新加载内容的效果
+      configModalKey.value++
+    }
+  } catch (error) {
+    console.error('重置设置失败:', error)
+    alert('重置设置失败，请刷新页面重试')
   }
 }
 
@@ -606,7 +669,7 @@ function handleFileImport(e: Event) {
             }
           })
           
-          alert('导入成功！')
+          // 导入成功，无需提示
         } else {
           alert(`导入失败: ${result.error || '未知错误'}`)
         }
@@ -647,8 +710,9 @@ async function handleExportImage() {
     window.scrollTo(0, 0)
     await new Promise(resolve => setTimeout(resolve, 100))
     
+    const currentScale = exportScale.value // 使用用户设置的导出倍率
     const canvas = await html2canvas(appContentRef.value, {
-      scale: 2, // 保持 2 倍高清
+      scale: currentScale, // 使用用户设置的倍率
       useCORS: true, // <--- 核心：开启跨域，利用 wsrv.nl 的 Header
       allowTaint: false,
       logging: false,
@@ -703,8 +767,8 @@ async function handleExportImage() {
             // 等待图片加载完成
             const waitForLoad = () => {
               if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
-                // 图片已加载，进行裁剪
-                cropImageWithCanvas(img).then((croppedBase64) => {
+                // 图片已加载，进行裁剪（传入导出缩放比例）
+                cropImageWithCanvas(img, currentScale).then((croppedBase64) => {
                   if (croppedBase64) {
                     img.src = croppedBase64
                     img.style.width = '100px'
@@ -903,8 +967,9 @@ async function handleExportPDF() {
     // console.log(`📊 总共收集到 ${itemLinks.length} 个链接，总作品数: ${totalItems}`)
     
     // 使用 html2canvas 生成图片（极速版：使用CORS直连）
+    const currentScale = exportScale.value // 使用用户设置的导出倍率
     const canvas = await html2canvas(appContentRef.value, {
-      scale: 2,
+      scale: currentScale, // 使用用户设置的倍率
       useCORS: true, // 开启CORS支持，利用wsrv.nl代理的CORS Header
       allowTaint: false,
       logging: false,
@@ -944,8 +1009,8 @@ async function handleExportPDF() {
             // 等待图片加载完成
             const waitForLoad = () => {
               if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
-                // 图片已加载，进行裁剪
-                cropImageWithCanvas(img).then((croppedBase64) => {
+                // 图片已加载，进行裁剪（传入导出缩放比例）
+                cropImageWithCanvas(img, currentScale).then((croppedBase64) => {
                   if (croppedBase64) {
                     img.src = croppedBase64
                     img.style.width = '100px'
@@ -1025,10 +1090,10 @@ async function handleExportPDF() {
     window.scrollTo(originalScrollX, originalScrollY)
     
     // 计算PDF尺寸（A4比例，但根据内容调整宽度）
-    // 注意：canvas 使用了 scale: 2，所以 canvas 尺寸是实际 DOM 的 2 倍
+    // 注意：canvas 使用了用户设置的 scale，所以 canvas 尺寸是实际 DOM 的 scale 倍
     const canvasWidth = canvas.width
     const canvasHeight = canvas.height
-    const htmlScaleForPDF = 2 // html2canvas 的 scale 参数
+    const htmlScaleForPDF = currentScale // html2canvas 的 scale 参数
     const actualDomWidth = canvasWidth / htmlScaleForPDF // 实际 DOM 宽度
     const actualDomHeight = canvasHeight / htmlScaleForPDF // 实际 DOM 高度
     
@@ -1115,7 +1180,7 @@ function applySmartCropToImage(img: HTMLImageElement) {
 
 // 使用canvas手动裁剪图片（用于导出，确保html2canvas正确渲染）
 // 统一处理所有图片（包括角色和bangumi），使用相同的裁剪规则
-async function cropImageWithCanvas(img: HTMLImageElement): Promise<string | null> {
+async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Promise<string | null> {
   // 必须有宽高才能计算
   if (!img.naturalWidth || !img.naturalHeight) {
     return null
@@ -1125,8 +1190,9 @@ async function cropImageWithCanvas(img: HTMLImageElement): Promise<string | null
   const naturalHeight = img.naturalHeight
   const naturalAspectRatio = naturalWidth / naturalHeight
   const targetAspectRatio = 0.75 // 3/4
-  const containerWidth = 100
-  const containerHeight = 133
+  // 根据导出缩放比例提高canvas分辨率，确保放大后清晰
+  const containerWidth = 100 * scale
+  const containerHeight = 133 * scale
   
   // 计算裁剪区域
   // 原理：先按目标尺寸等比缩放，然后从原图中裁剪对应区域
@@ -1185,7 +1251,7 @@ async function cropImageWithCanvas(img: HTMLImageElement): Promise<string | null
       0, 0, containerWidth, containerHeight
     )
     
-    // 返回裁剪后的base64
+    // 返回裁剪后的base64，使用高质量PNG格式
     return canvas.toDataURL('image/png', 1.0)
   } catch (error) {
     console.error('裁剪图片失败:', error)
@@ -1265,7 +1331,7 @@ async function cropImageWithCanvas(img: HTMLImageElement): Promise<string | null
           style="display: none"
           @change="handleFileImport"
         />
-        <button class="btn btn-danger" @click="handleClearClick" title="清空所有数据">
+        <button class="btn btn-danger" @click="handleClearClick" title="清空所有作品和恢复默认标题">
           清空数据
         </button>
         <button class="btn btn-secondary" @click="showConfig = true">
@@ -1301,12 +1367,15 @@ async function cropImageWithCanvas(img: HTMLImageElement): Promise<string | null
 
     <ConfigModal
       v-if="showConfig"
+      :key="configModalKey"
       :configs="tierConfigs"
       @close="showConfig = false"
       @update="handleUpdateConfigs"
       @update-title-font-size="handleUpdateTitleFontSize"
       @update-theme="handleUpdateTheme"
       @update-hide-item-names="handleUpdateHideItemNames"
+      @update-export-scale="handleUpdateExportScale"
+      @reset-settings="handleResetSettings"
     />
     
     <!-- 清空数据确认弹窗 -->
@@ -1316,14 +1385,13 @@ async function cropImageWithCanvas(img: HTMLImageElement): Promise<string | null
           <h3 class="confirm-title">⚠️ 警告</h3>
         </div>
         <div class="confirm-body">
-          <p>您确定要清空所有数据吗？</p>
+          <p>您确定要清空所有作品吗？</p>
           <p class="confirm-warning">此操作将删除：</p>
           <ul class="confirm-list">
             <li>所有已添加的作品</li>
-            <li>所有评分等级配置</li>
-            <li>标题和字体大小设置</li>
-            <li>搜索历史记录</li>
+            <li>标题（恢复为默认标题）</li>
           </ul>
+          <p class="confirm-info">⚠️ 注意：此操作不会删除您的设置（主题、导出倍率、评分等级配置等）</p>
           <p class="confirm-danger">此操作不可恢复！</p>
         </div>
         <div class="confirm-footer">
@@ -1537,6 +1605,13 @@ async function cropImageWithCanvas(img: HTMLImageElement): Promise<string | null
   font-weight: bold;
   color: var(--text-secondary);
   margin-top: 15px !important;
+}
+
+.confirm-info {
+  font-weight: bold;
+  color: #ff9800;
+  margin-top: 15px !important;
+  font-size: 14px;
 }
 
 .confirm-danger {
