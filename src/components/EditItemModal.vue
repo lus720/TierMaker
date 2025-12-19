@@ -26,6 +26,7 @@ const mouseDownInside = ref(false)
 const hasHandledLongPressMouseUp = ref(false)
 const originalImageRef = ref<HTMLImageElement | null>(null)
 const previewMaskStyle = ref<{ [key: string]: string }>({})
+const overlayStyle = ref<{ [key: string]: string }>({})
 const cornerTopLeftStyle = ref<{ [key: string]: string }>({ display: 'none' })
 const cornerTopRightStyle = ref<{ [key: string]: string }>({ display: 'none' })
 const cornerBottomLeftStyle = ref<{ [key: string]: string }>({ display: 'none' })
@@ -203,11 +204,44 @@ function updatePreviewCrop() {
     // 设置白框的位置和大小（像素级精确）
     // 白框位置是高亮区域向外扩张一个单位后的位置
     // ✅ 同样使用像素对齐，确保白框和红色标记点使用相同的坐标系统
+    const maskLeftSnapped = snap(imageLeft + maskLeft)
+    const maskTopSnapped = snap(imageTop + maskTop)
+    const maskWidthSnapped = snap(maskWidth)
+    const maskHeightSnapped = snap(maskHeight)
+    
     previewMaskStyle.value = {
-      left: `${snap(imageLeft + maskLeft)}px`,
-      top: `${snap(imageTop + maskTop)}px`,
-      width: `${snap(maskWidth)}px`,
-      height: `${snap(maskHeight)}px`,
+      left: `${maskLeftSnapped}px`,
+      top: `${maskTopSnapped}px`,
+      width: `${maskWidthSnapped}px`,
+      height: `${maskHeightSnapped}px`,
+    }
+    
+    // ✅ 计算遮罩层（加暗未选中部分）
+    // 遮罩层覆盖整个容器，但排除白框区域（使用 clip-path）
+    // 获取容器的实际尺寸（相对于 padding-box）
+    const containerContentWidth = containerRect.width - container.clientLeft * 2
+    const containerContentHeight = containerRect.height - container.clientTop * 2
+    
+    // 计算白框在容器中的百分比位置（相对于容器内容区域）
+    const maskLeftPercent = (maskLeftSnapped / containerContentWidth) * 100
+    const maskTopPercent = (maskTopSnapped / containerContentHeight) * 100
+    const maskRightPercent = ((maskLeftSnapped + maskWidthSnapped) / containerContentWidth) * 100
+    const maskBottomPercent = ((maskTopSnapped + maskHeightSnapped) / containerContentHeight) * 100
+    
+    // 使用 clip-path 创建反向遮罩，排除白框区域
+    overlayStyle.value = {
+      clipPath: `polygon(
+        0% 0%,
+        0% 100%,
+        ${maskLeftPercent}% 100%,
+        ${maskLeftPercent}% ${maskTopPercent}%,
+        ${maskRightPercent}% ${maskTopPercent}%,
+        ${maskRightPercent}% ${maskBottomPercent}%,
+        ${maskLeftPercent}% ${maskBottomPercent}%,
+        ${maskLeftPercent}% 100%,
+        100% 100%,
+        100% 0%
+      )`,
     }
     
     // ✅ 设置四个顶点的红色标记点（用于检测图片位置）
@@ -463,6 +497,8 @@ function handleMouseUp(event: MouseEvent) {
               class="image-preview-original"
               @load="updatePreviewCrop"
             />
+            <!-- 遮罩层：将白框外的部分加暗，突出选中区域 -->
+            <div class="image-preview-overlay" :style="overlayStyle"></div>
             <!-- 四个顶点红色标记点（用于检测图片位置） -->
             <div class="image-corner-marker" :style="cornerTopLeftStyle"></div>
             <div class="image-corner-marker" :style="cornerTopRightStyle"></div>
@@ -693,6 +729,17 @@ function handleMouseUp(event: MouseEvent) {
   display: block;
 }
 
+.image-preview-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1;
+  pointer-events: none;
+}
+
 .image-corner-marker {
   position: absolute;
   background-color: red;
@@ -704,7 +751,7 @@ function handleMouseUp(event: MouseEvent) {
   position: absolute;
   overflow: visible;
   border: 2px solid #ffffff;
-  z-index: 1;
+  z-index: 2;
   background: transparent;
   pointer-events: none;
   /* 大小通过内联样式动态设置，保持3:4比例 */
