@@ -26,7 +26,10 @@ const mouseDownInside = ref(false)
 const hasHandledLongPressMouseUp = ref(false)
 const originalImageRef = ref<HTMLImageElement | null>(null)
 const previewMaskStyle = ref<{ [key: string]: string }>({})
-const overlayStyle = ref<{ [key: string]: string }>({})
+const cornerTopLeftStyle = ref<{ [key: string]: string }>({ display: 'none' })
+const cornerTopRightStyle = ref<{ [key: string]: string }>({ display: 'none' })
+const cornerBottomLeftStyle = ref<{ [key: string]: string }>({ display: 'none' })
+const cornerBottomRightStyle = ref<{ [key: string]: string }>({ display: 'none' })
 
 watch(() => props.item, (newItem) => {
   if (newItem) {
@@ -90,106 +93,179 @@ function updatePreviewCrop() {
       return
     }
     
-    // 计算原图的缩放比例（contain 模式，保持宽高比，取较小值）
-    // 容器可用尺寸（减去 padding）
-    const containerPadding = 20 * 2 // 左右 padding
-    const containerAvailableWidth = containerRect.width - containerPadding
-    const containerAvailableHeight = containerRect.height - containerPadding
+    // ✅ 关键修复：坐标系原点问题
+    // getBoundingClientRect() 返回的是相对于视口的 border-box 坐标
+    // 但 position: absolute 的定位原点是容器的 padding-box（padding 内边缘），不是 border-box
+    // 容器有 border: 2px，所以需要调整坐标原点
     
-    const scaleX = containerAvailableWidth / naturalWidth
-    const scaleY = containerAvailableHeight / naturalHeight
-    const scale = Math.min(scaleX, scaleY) // contain 模式下使用统一的缩放比例
+    // ✅ 使用 padding-box 作为坐标原点（border 内边缘）
+    const originX = containerRect.left + container.clientLeft  // clientLeft = border-left-width
+    const originY = containerRect.top + container.clientTop     // clientTop = border-top-width
     
-    // 计算图片实际显示的尺寸（使用 scale）
+    // ✅ 像素对齐函数：将坐标对齐到设备像素网格，避免抗锯齿导致的视觉偏差
+    const dpr = window.devicePixelRatio || 1
+    const snap = (v: number) => Math.round(v * dpr) / dpr
+    
+    // <img> 元素相对于容器的位置（使用 padding-box 作为原点）
+    const imgElementLeft = imageRect.left - originX
+    const imgElementTop = imageRect.top - originY
+    const imgElementWidth = imageRect.width
+    const imgElementHeight = imageRect.height
+    
+    // 对于 object-fit: contain，图片内容会在 <img> 元素内居中显示
+    // 计算图片内容的实际显示尺寸（保持宽高比，取较小的缩放比例）
+    const scaleX = imgElementWidth / naturalWidth
+    const scaleY = imgElementHeight / naturalHeight
+    const scale = Math.min(scaleX, scaleY)
+    
+    // 图片内容实际显示的尺寸
     const actualDisplayedWidth = naturalWidth * scale
     const actualDisplayedHeight = naturalHeight * scale
     
-    // 计算图片在容器中的实际位置（居中显示）
-    const imageLeft = (containerRect.width - actualDisplayedWidth) / 2
-    const imageTop = (containerRect.height - actualDisplayedHeight) / 2
+    // 图片内容在 <img> 元素内的位置（居中）
+    // 这是图片内容相对于 <img> 元素左上角的偏移量
+    const imageContentLeftInImg = (imgElementWidth - actualDisplayedWidth) / 2
+    const imageContentTopInImg = (imgElementHeight - actualDisplayedHeight) / 2
     
-    // 计算预览区域在原图中的实际尺寸（像素）
-    // 这个逻辑应该与实际页面中的裁剪逻辑完全一致
-    let sourceWidth = 0
-    let sourceHeight = 0
+    // ✅ 图片内容相对于容器的绝对位置
+    // 这是图片实际显示的左上角位置，白框和红色标记点都使用这个位置
+    const imageLeft = imgElementLeft + imageContentLeftInImg
+    const imageTop = imgElementTop + imageContentTopInImg
+    
+    // ✅ 使用与实际裁剪完全相同的逻辑计算裁剪区域（像素级精确）
+    // 目标尺寸：100px × 133px (3:4 比例)
+    const containerWidth = 100
+    const containerHeight = 133
+    const targetAspectRatio = 0.75 // 3/4
+    
     let sourceX = 0
     let sourceY = 0
+    let sourceWidth = naturalWidth
+    let sourceHeight = naturalHeight
     
-    if (naturalRatio > targetRatio) {
-      // 图片较宽：按高度缩放，需要水平裁剪
-      // 预览区域的高度 = 原图高度
-      sourceHeight = naturalHeight
-      // 预览区域的宽度 = 原图高度 * 目标比例
-      sourceWidth = naturalHeight * targetRatio
+    if (naturalRatio > targetAspectRatio) {
+      // s > 0.75：图片较宽
+      // 需要从原图中裁剪出对应100px的部分
+      // 放缩图片让高度恰好等于作品框高度，然后对宽度居中截取
+      const scaleByHeight = containerHeight / naturalHeight
+      const targetWidthInOriginal = containerWidth / scaleByHeight
+      sourceWidth = targetWidthInOriginal
       
-      // 根据裁剪位置计算水平偏移
-      if (cropPos.includes('left')) {
-        sourceX = 0
-      } else if (cropPos.includes('right')) {
-        sourceX = naturalWidth - sourceWidth
+      // 根据裁剪位置计算 sourceX
+      if (cropPos === 'left center') {
+        sourceX = 0 // 左侧
+      } else if (cropPos === 'right center') {
+        sourceX = naturalWidth - sourceWidth // 右侧
       } else {
-        // center
-        sourceX = (naturalWidth - sourceWidth) / 2
+        // center center 或 auto（默认居中）
+        sourceX = (naturalWidth - sourceWidth) / 2 // 居中裁剪
       }
+      
       sourceY = 0
+      sourceHeight = naturalHeight // 从第一排像素到最后一排像素
     } else {
-      // 图片较高：按宽度缩放，需要垂直裁剪
-      // 预览区域的宽度 = 原图宽度
-      sourceWidth = naturalWidth
-      // 预览区域的高度 = 原图宽度 / 目标比例
-      sourceHeight = naturalWidth / targetRatio
+      // s < 0.75：图片较高
+      // 需要从原图中裁剪出对应133px的部分
+      // 放缩图片让宽度恰好为作品框宽度，然后从顶部开始截取
+      const scaleByWidth = containerWidth / naturalWidth
+      const targetHeightInOriginal = containerHeight / scaleByWidth
+      sourceHeight = targetHeightInOriginal
       
-      // 根据裁剪位置计算垂直偏移
-      if (cropPos.includes('top')) {
-        sourceY = 0
-      } else if (cropPos.includes('bottom')) {
-        sourceY = naturalHeight - sourceHeight
+      // 根据裁剪位置计算 sourceY
+      if (cropPos === 'center top') {
+        sourceY = 0 // 顶部
+      } else if (cropPos === 'center bottom') {
+        sourceY = naturalHeight - sourceHeight // 底部
       } else {
-        // center
-        sourceY = (naturalHeight - sourceHeight) / 2
+        // center center 或 auto（默认顶部）
+        sourceY = 0 // 保留顶部
       }
+      
       sourceX = 0
+      sourceWidth = naturalWidth // 每行的每个像素都要高亮
     }
     
-    // 将原图坐标转换为显示坐标（使用统一的scale）
-    const maskLeft = sourceX * scale
-    const maskTop = sourceY * scale
-    const maskWidth = sourceWidth * scale
-    const maskHeight = sourceHeight * scale
+    // 将原图坐标转换为显示坐标（使用统一的scale，像素级精确）
+    const highlightLeft = sourceX * scale
+    const highlightTop = sourceY * scale
+    const highlightWidth = sourceWidth * scale
+    const highlightHeight = sourceHeight * scale
     
-    // 确保白框不超出图片边界
-    // 限制白框位置，确保不超出图片实际显示区域
-    const clampedMaskLeft = Math.max(0, Math.min(maskLeft, actualDisplayedWidth - maskWidth))
-    const clampedMaskTop = Math.max(0, Math.min(maskTop, actualDisplayedHeight - maskHeight))
+    // ✅ 高亮区域确定后，向外扩张一个单位就得到遮罩框（白框）
+    const expandUnit = 1 // 向外扩张一个单位
+    const maskLeft = Math.max(0, highlightLeft - expandUnit)
+    const maskTop = Math.max(0, highlightTop - expandUnit)
+    const maskRight = Math.min(actualDisplayedWidth, highlightLeft + highlightWidth + expandUnit)
+    const maskBottom = Math.min(actualDisplayedHeight, highlightTop + highlightHeight + expandUnit)
+    const maskWidth = maskRight - maskLeft
+    const maskHeight = maskBottom - maskTop
     
-    // 计算遮罩层（加暗未选中部分）
-    // 使用 clip-path 创建一个"反向遮罩"，将白框外的部分加暗
-    const maskLeftPercent = ((imageLeft + clampedMaskLeft) / containerRect.width) * 100
-    const maskTopPercent = ((imageTop + clampedMaskTop) / containerRect.height) * 100
-    const maskRightPercent = ((imageLeft + clampedMaskLeft + maskWidth) / containerRect.width) * 100
-    const maskBottomPercent = ((imageTop + clampedMaskTop + maskHeight) / containerRect.height) * 100
-    
-    overlayStyle.value = {
-      clipPath: `polygon(
-        0% 0%,
-        0% 100%,
-        ${maskLeftPercent}% 100%,
-        ${maskLeftPercent}% ${maskTopPercent}%,
-        ${maskRightPercent}% ${maskTopPercent}%,
-        ${maskRightPercent}% ${maskBottomPercent}%,
-        ${maskLeftPercent}% ${maskBottomPercent}%,
-        ${maskLeftPercent}% 100%,
-        100% 100%,
-        100% 0%
-      )`,
-    }
-    
-    // 设置预览遮罩的位置和大小（只显示边框，不显示背景图片）
+    // 设置白框的位置和大小（像素级精确）
+    // 白框位置是高亮区域向外扩张一个单位后的位置
+    // ✅ 同样使用像素对齐，确保白框和红色标记点使用相同的坐标系统
     previewMaskStyle.value = {
-      left: `${imageLeft + clampedMaskLeft}px`,
-      top: `${imageTop + clampedMaskTop}px`,
-      width: `${maskWidth}px`,
-      height: `${maskHeight}px`,
+      left: `${snap(imageLeft + maskLeft)}px`,
+      top: `${snap(imageTop + maskTop)}px`,
+      width: `${snap(maskWidth)}px`,
+      height: `${snap(maskHeight)}px`,
+    }
+    
+    // ✅ 设置四个顶点的红色标记点（用于检测图片位置）
+    // 标记点大小为 1 像素，直接覆盖在图片顶点处的像素上
+    const cornerSize = 1 // 标记点大小（1 像素）
+    
+    // 对齐到设备像素网格
+    const imageLeftSnapped = snap(imageLeft)
+    const imageTopSnapped = snap(imageTop)
+    const imageRightSnapped = snap(imageLeft + actualDisplayedWidth)
+    const imageBottomSnapped = snap(imageTop + actualDisplayedHeight)
+    
+    // 左上角：直接覆盖在左上角顶点像素
+    cornerTopLeftStyle.value = {
+      position: 'absolute',
+      left: `${imageLeftSnapped}px`,
+      top: `${imageTopSnapped}px`,
+      width: `${cornerSize}px`,
+      height: `${cornerSize}px`,
+      backgroundColor: 'red',
+      zIndex: '10',
+      pointerEvents: 'none',
+    }
+    
+    // 右上角：直接覆盖在右上角顶点像素
+    cornerTopRightStyle.value = {
+      position: 'absolute',
+      left: `${imageRightSnapped - cornerSize}px`,
+      top: `${imageTopSnapped}px`,
+      width: `${cornerSize}px`,
+      height: `${cornerSize}px`,
+      backgroundColor: 'red',
+      zIndex: '10',
+      pointerEvents: 'none',
+    }
+    
+    // 左下角：直接覆盖在左下角顶点像素
+    cornerBottomLeftStyle.value = {
+      position: 'absolute',
+      left: `${imageLeftSnapped}px`,
+      top: `${imageBottomSnapped - cornerSize}px`,
+      width: `${cornerSize}px`,
+      height: `${cornerSize}px`,
+      backgroundColor: 'red',
+      zIndex: '10',
+      pointerEvents: 'none',
+    }
+    
+    // 右下角：直接覆盖在右下角顶点像素
+    cornerBottomRightStyle.value = {
+      position: 'absolute',
+      left: `${imageRightSnapped - cornerSize}px`,
+      top: `${imageBottomSnapped - cornerSize}px`,
+      width: `${cornerSize}px`,
+      height: `${cornerSize}px`,
+      backgroundColor: 'red',
+      zIndex: '10',
+      pointerEvents: 'none',
     }
   })
 }
@@ -387,8 +463,11 @@ function handleMouseUp(event: MouseEvent) {
               class="image-preview-original"
               @load="updatePreviewCrop"
             />
-            <!-- 遮罩层：将白框外的部分加暗 -->
-            <div class="image-preview-overlay" :style="overlayStyle"></div>
+            <!-- 四个顶点红色标记点（用于检测图片位置） -->
+            <div class="image-corner-marker" :style="cornerTopLeftStyle"></div>
+            <div class="image-corner-marker" :style="cornerTopRightStyle"></div>
+            <div class="image-corner-marker" :style="cornerBottomLeftStyle"></div>
+            <div class="image-corner-marker" :style="cornerBottomRightStyle"></div>
             <!-- 预览区域（白色框框选的部分就是预览结果） -->
             <div class="image-preview-mask" :style="previewMaskStyle"></div>
           </div>
@@ -614,22 +693,17 @@ function handleMouseUp(event: MouseEvent) {
   display: block;
 }
 
-.image-preview-overlay {
+.image-corner-marker {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 1;
+  background-color: red;
   pointer-events: none;
+  z-index: 10;
 }
 
 .image-preview-mask {
   position: absolute;
-  overflow: hidden;
+  overflow: visible;
   border: 2px solid #ffffff;
-  box-shadow: 0 0 15px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(0, 0, 0, 0.2);
   z-index: 1;
   background: transparent;
   pointer-events: none;
