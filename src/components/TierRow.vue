@@ -216,6 +216,11 @@ function handleImageLoad(event: Event) {
   const img = event.target as HTMLImageElement
   console.log('✅ 图片加载成功:', img.src)
   
+  // 获取对应的 item 信息
+  const itemId = img.getAttribute('data-item-id')
+  const item = itemId ? props.row.items.find(i => String(i.id) === itemId) : null
+  const cropPosition = item?.cropPosition || 'auto'
+  
   // 统一处理所有图片（包括角色和bangumi），使用相同的裁剪规则
   // 目标宽高比 target = 0.75 (3:4)，容器尺寸 100px × 133px
   const targetAspectRatio = 0.75 // 3/4
@@ -223,19 +228,24 @@ function handleImageLoad(event: Event) {
   const containerHeight = 133
   const naturalAspectRatio = img.naturalWidth / img.naturalHeight
   
-  // 统一使用 cover 模式，根据宽高比设置不同的裁剪位置
+  // 统一使用 cover 模式
   img.style.objectFit = 'cover'
   img.style.width = `${containerWidth}px`
   img.style.height = `${containerHeight}px`
   
-  if (naturalAspectRatio > targetAspectRatio) {
-    // s > 0.75：图片较宽
-    // 等比缩放图片，使高度与图片框对齐（133px），然后居中裁剪
-    img.style.objectPosition = 'center'
+  // 根据保存的裁剪位置或自动判断
+  if (cropPosition === 'auto') {
+    // 自动模式：根据宽高比设置不同的裁剪位置
+    if (naturalAspectRatio > targetAspectRatio) {
+      // s > 0.75：图片较宽，居中裁剪
+      img.style.objectPosition = 'center center'
+    } else {
+      // s < 0.75：图片较高，保留顶部
+      img.style.objectPosition = 'center top'
+    }
   } else {
-    // s < 0.75：图片较高
-    // 等比缩放图片，使宽度与图片框宽度一致（100px），向下裁剪（保留顶部）
-    img.style.objectPosition = 'top'
+    // 使用保存的自定义裁剪位置
+    img.style.objectPosition = cropPosition
   }
 }
 
@@ -444,6 +454,7 @@ function getLongPressProgress(index: number): number {
         class="item-image-container"
       >
         <img
+          :key="`img-${item.id}-${item.cropPosition || 'auto'}`"
           :src="item.image"
           :data-original-src="item.image"
           :data-item-id="item.id || ''"

@@ -303,6 +303,14 @@ function handleSaveEditItem(updatedItem: AnimeItem) {
       const row = tier.rows.find(r => r.id === currentRowId.value)
       if (row) {
         row.items[currentIndex.value] = updatedItem
+        // 保存后，等待 DOM 更新，然后重新应用裁剪位置
+        nextTick(() => {
+          const imgElement = document.querySelector(`img[data-item-id="${updatedItem.id}"]`) as HTMLImageElement
+          if (imgElement && imgElement.complete && imgElement.naturalWidth > 0) {
+            // 图片已加载，手动应用裁剪位置
+            applySmartCropToImage(imgElement)
+          }
+        })
       }
     }
   }
@@ -1161,6 +1169,24 @@ function getCorsProxyUrl(url: string): string {
 function applySmartCropToImage(img: HTMLImageElement) {
   // 必须有宽高才能计算，如果没有加载完则忽略
   if (img.naturalWidth && img.naturalHeight) {
+    // 获取对应的 item 信息
+    const itemId = img.getAttribute('data-item-id')
+    let cropPosition: string | undefined = 'auto'
+    
+    if (itemId) {
+      // 从 tiers 中查找对应的 item
+      for (const tier of tiers.value) {
+        for (const row of tier.rows) {
+          const item = row.items.find(i => String(i.id) === itemId)
+          if (item && item.cropPosition) {
+            cropPosition = item.cropPosition
+            break
+          }
+        }
+        if (cropPosition !== 'auto') break
+      }
+    }
+    
     const ratio = img.naturalWidth / img.naturalHeight
     const targetRatio = 0.75
     
@@ -1168,12 +1194,18 @@ function applySmartCropToImage(img: HTMLImageElement) {
     img.style.width = '100px'
     img.style.height = '133px'
     
-    if (ratio < targetRatio) {
-      // 场景：长图 (如 9:16) -> 靠上裁剪，保留头部
-      img.style.objectPosition = 'center top'
+    // 根据保存的裁剪位置或自动判断
+    if (cropPosition === 'auto') {
+      if (ratio < targetRatio) {
+        // 场景：长图 (如 9:16) -> 靠上裁剪，保留头部
+        img.style.objectPosition = 'center top'
+      } else {
+        // 场景：宽图 (如 16:9, 1:1, 4:3) -> 居中裁剪
+        img.style.objectPosition = 'center center'
+      }
     } else {
-      // 场景：宽图 (如 16:9, 1:1, 4:3) -> 居中裁剪
-      img.style.objectPosition = 'center center'
+      // 使用保存的自定义裁剪位置
+      img.style.objectPosition = cropPosition
     }
   }
 }
@@ -1184,6 +1216,24 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   // 必须有宽高才能计算
   if (!img.naturalWidth || !img.naturalHeight) {
     return null
+  }
+  
+  // 获取对应的 item 信息
+  const itemId = img.getAttribute('data-item-id')
+  let cropPosition: string | undefined = 'auto'
+  
+  if (itemId) {
+    // 从 tiers 中查找对应的 item
+    for (const tier of tiers.value) {
+      for (const row of tier.rows) {
+        const item = row.items.find(i => String(i.id) === itemId)
+        if (item && item.cropPosition) {
+          cropPosition = item.cropPosition
+          break
+        }
+      }
+      if (cropPosition !== 'auto') break
+    }
   }
   
   const naturalWidth = img.naturalWidth
@@ -1203,30 +1253,42 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   
   if (naturalAspectRatio > targetAspectRatio) {
     // s > 0.75：图片较宽
-    // 1. 等比缩放使高度对齐133px
-    //    缩放比例 = 133 / naturalHeight
-    //    缩放后的宽度 = naturalWidth * (133 / naturalHeight) > 100px
-    // 2. 需要从原图中裁剪出对应100px的部分（居中）
-    //    原图中对应100px的宽度 = 100 / (133 / naturalHeight) = 100 * naturalHeight / 133
+    // 需要从原图中裁剪出对应100px的部分
     const scaleByHeight = containerHeight / naturalHeight
     const targetWidthInOriginal = containerWidth / scaleByHeight
     sourceWidth = targetWidthInOriginal
-    sourceX = (naturalWidth - sourceWidth) / 2 // 居中裁剪
+    
+    // 根据裁剪位置计算 sourceX
+    if (cropPosition === 'left center') {
+      sourceX = 0 // 左侧
+    } else if (cropPosition === 'right center') {
+      sourceX = naturalWidth - sourceWidth // 右侧
+    } else {
+      // center center 或 auto（默认居中）
+      sourceX = (naturalWidth - sourceWidth) / 2 // 居中裁剪
+    }
+    
     sourceY = 0
     sourceHeight = naturalHeight
   } else {
     // s < 0.75：图片较高
-    // 1. 等比缩放使宽度对齐100px
-    //    缩放比例 = 100 / naturalWidth
-    //    缩放后的高度 = naturalHeight * (100 / naturalWidth) > 133px
-    // 2. 需要从原图中裁剪出对应133px的部分（保留顶部）
-    //    原图中对应133px的高度 = 133 / (100 / naturalWidth) = 133 * naturalWidth / 100
+    // 需要从原图中裁剪出对应133px的部分
     const scaleByWidth = containerWidth / naturalWidth
     const targetHeightInOriginal = containerHeight / scaleByWidth
-    sourceX = 0
-    sourceY = 0 // 保留顶部
-    sourceWidth = naturalWidth
     sourceHeight = targetHeightInOriginal
+    
+    // 根据裁剪位置计算 sourceY
+    if (cropPosition === 'center top') {
+      sourceY = 0 // 顶部
+    } else if (cropPosition === 'center bottom') {
+      sourceY = naturalHeight - sourceHeight // 底部
+    } else {
+      // center center 或 auto（默认顶部）
+      sourceY = 0 // 保留顶部
+    }
+    
+    sourceX = 0
+    sourceWidth = naturalWidth
   }
   
   // 使用canvas裁剪图片

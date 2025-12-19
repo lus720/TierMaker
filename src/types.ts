@@ -1,3 +1,6 @@
+// 图片裁剪位置类型
+export type CropPosition = 'auto' | 'center top' | 'center center' | 'center bottom' | 'left center' | 'right center'
+
 // 动画/作品数据类型
 export interface AnimeItem {
   id: number | string
@@ -9,6 +12,7 @@ export interface AnimeItem {
   url?: string // 自定义链接
   originalUrl?: string // 添加作品时的默认web链接
   originalImage?: string // 添加作品时的默认封面图链接
+  cropPosition?: CropPosition // 自定义裁剪位置，默认为 'auto'（自动）
 }
 
 // 评分等级配置

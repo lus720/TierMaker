@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import type { AnimeItem } from '../types'
+import { ref, watch, nextTick } from 'vue'
+import type { AnimeItem, CropPosition } from '../types'
 import { generateDefaultUrl } from '../utils/url'
 
 const props = defineProps<{
@@ -19,9 +19,14 @@ const imageUrl = ref('')
 const customUrl = ref('')
 const imageFile = ref<File | null>(null)
 const imagePreview = ref<string>('')
+const cropPosition = ref<CropPosition>('auto')
+const previewCropPosition = ref<CropPosition>('auto')
 const modalContentRef = ref<HTMLElement | null>(null)
 const mouseDownInside = ref(false)
 const hasHandledLongPressMouseUp = ref(false)
+const originalImageRef = ref<HTMLImageElement | null>(null)
+const previewMaskStyle = ref<{ [key: string]: string }>({})
+const overlayStyle = ref<{ [key: string]: string }>({})
 
 watch(() => props.item, (newItem) => {
   if (newItem) {
@@ -31,8 +36,193 @@ watch(() => props.item, (newItem) => {
     customUrl.value = newItem.url || ''
     imageFile.value = null
     imagePreview.value = newItem.image || ''
+    cropPosition.value = newItem.cropPosition || 'auto'
+    previewCropPosition.value = newItem.cropPosition || 'auto'
+    // 更新预览图片的裁剪位置
+    nextTick(() => {
+      updatePreviewCrop()
+    })
   }
 }, { immediate: true })
+
+// 更新预览图片的裁剪位置
+function updatePreviewCrop() {
+  if (!imagePreview.value) return
+  
+  const originalImg = originalImageRef.value
+  if (!originalImg) return
+  
+  // 等待图片加载完成
+  if (!originalImg.complete) return
+  if (!originalImg.naturalWidth || !originalImg.naturalHeight) return
+  
+  const naturalWidth = originalImg.naturalWidth
+  const naturalHeight = originalImg.naturalHeight
+  const naturalRatio = naturalWidth / naturalHeight
+  const targetRatio = 0.75 // 3:4
+  const previewWidth = 100
+  const previewHeight = 133
+  
+  // 确定裁剪位置
+  let cropPos = previewCropPosition.value
+  if (cropPos === 'auto') {
+    // 自动模式：根据图片宽高比决定
+    if (naturalRatio < targetRatio) {
+      cropPos = 'center top'
+    } else {
+      cropPos = 'center center'
+    }
+  }
+  
+  // 计算预览遮罩在原图中的位置
+  // 获取原图在容器中的实际显示尺寸
+  const container = originalImg.parentElement
+  if (!container) return
+  
+  // 使用 requestAnimationFrame 确保 DOM 更新完成
+  requestAnimationFrame(() => {
+    const containerRect = container.getBoundingClientRect()
+    const imageRect = originalImg.getBoundingClientRect()
+    
+    if (imageRect.width === 0 || imageRect.height === 0) {
+      // 如果尺寸为0，延迟重试
+      setTimeout(() => updatePreviewCrop(), 100)
+      return
+    }
+    
+    // 计算原图的缩放比例（contain 模式，保持宽高比，取较小值）
+    // 容器可用尺寸（减去 padding）
+    const containerPadding = 20 * 2 // 左右 padding
+    const containerAvailableWidth = containerRect.width - containerPadding
+    const containerAvailableHeight = containerRect.height - containerPadding
+    
+    const scaleX = containerAvailableWidth / naturalWidth
+    const scaleY = containerAvailableHeight / naturalHeight
+    const scale = Math.min(scaleX, scaleY) // contain 模式下使用统一的缩放比例
+    
+    // 计算图片实际显示的尺寸（使用 scale）
+    const actualDisplayedWidth = naturalWidth * scale
+    const actualDisplayedHeight = naturalHeight * scale
+    
+    // 计算图片在容器中的实际位置（居中显示）
+    const imageLeft = (containerRect.width - actualDisplayedWidth) / 2
+    const imageTop = (containerRect.height - actualDisplayedHeight) / 2
+    
+    // 计算预览区域在原图中的实际尺寸（像素）
+    // 这个逻辑应该与实际页面中的裁剪逻辑完全一致
+    let sourceWidth = 0
+    let sourceHeight = 0
+    let sourceX = 0
+    let sourceY = 0
+    
+    if (naturalRatio > targetRatio) {
+      // 图片较宽：按高度缩放，需要水平裁剪
+      // 预览区域的高度 = 原图高度
+      sourceHeight = naturalHeight
+      // 预览区域的宽度 = 原图高度 * 目标比例
+      sourceWidth = naturalHeight * targetRatio
+      
+      // 根据裁剪位置计算水平偏移
+      if (cropPos.includes('left')) {
+        sourceX = 0
+      } else if (cropPos.includes('right')) {
+        sourceX = naturalWidth - sourceWidth
+      } else {
+        // center
+        sourceX = (naturalWidth - sourceWidth) / 2
+      }
+      sourceY = 0
+    } else {
+      // 图片较高：按宽度缩放，需要垂直裁剪
+      // 预览区域的宽度 = 原图宽度
+      sourceWidth = naturalWidth
+      // 预览区域的高度 = 原图宽度 / 目标比例
+      sourceHeight = naturalWidth / targetRatio
+      
+      // 根据裁剪位置计算垂直偏移
+      if (cropPos.includes('top')) {
+        sourceY = 0
+      } else if (cropPos.includes('bottom')) {
+        sourceY = naturalHeight - sourceHeight
+      } else {
+        // center
+        sourceY = (naturalHeight - sourceHeight) / 2
+      }
+      sourceX = 0
+    }
+    
+    // 将原图坐标转换为显示坐标（使用统一的scale）
+    const maskLeft = sourceX * scale
+    const maskTop = sourceY * scale
+    const maskWidth = sourceWidth * scale
+    const maskHeight = sourceHeight * scale
+    
+    // 确保白框不超出图片边界
+    // 限制白框位置，确保不超出图片实际显示区域
+    const clampedMaskLeft = Math.max(0, Math.min(maskLeft, actualDisplayedWidth - maskWidth))
+    const clampedMaskTop = Math.max(0, Math.min(maskTop, actualDisplayedHeight - maskHeight))
+    
+    // 计算遮罩层（加暗未选中部分）
+    // 使用 clip-path 创建一个"反向遮罩"，将白框外的部分加暗
+    const maskLeftPercent = ((imageLeft + clampedMaskLeft) / containerRect.width) * 100
+    const maskTopPercent = ((imageTop + clampedMaskTop) / containerRect.height) * 100
+    const maskRightPercent = ((imageLeft + clampedMaskLeft + maskWidth) / containerRect.width) * 100
+    const maskBottomPercent = ((imageTop + clampedMaskTop + maskHeight) / containerRect.height) * 100
+    
+    overlayStyle.value = {
+      clipPath: `polygon(
+        0% 0%,
+        0% 100%,
+        ${maskLeftPercent}% 100%,
+        ${maskLeftPercent}% ${maskTopPercent}%,
+        ${maskRightPercent}% ${maskTopPercent}%,
+        ${maskRightPercent}% ${maskBottomPercent}%,
+        ${maskLeftPercent}% ${maskBottomPercent}%,
+        ${maskLeftPercent}% 100%,
+        100% 100%,
+        100% 0%
+      )`,
+    }
+    
+    // 设置预览遮罩的位置和大小（只显示边框，不显示背景图片）
+    previewMaskStyle.value = {
+      left: `${imageLeft + clampedMaskLeft}px`,
+      top: `${imageTop + clampedMaskTop}px`,
+      width: `${maskWidth}px`,
+      height: `${maskHeight}px`,
+    }
+  })
+}
+
+// 监听裁剪位置变化
+watch(previewCropPosition, () => {
+  nextTick(() => {
+    updatePreviewCrop()
+  })
+})
+
+// 监听图片预览变化
+watch(imagePreview, () => {
+  nextTick(() => {
+    // 等待图片加载完成
+    if (originalImageRef.value) {
+      if (originalImageRef.value.complete) {
+        updatePreviewCrop()
+      } else {
+        originalImageRef.value.addEventListener('load', updatePreviewCrop, { once: true })
+      }
+    }
+  })
+})
+
+// 监听窗口大小变化，重新计算预览位置
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', () => {
+    if (imagePreview.value) {
+      updatePreviewCrop()
+    }
+  })
+}
 
 watch(() => props.isLongPressTriggered, (value) => {
   // 当长按标志变化时，重置处理标志
@@ -113,6 +303,8 @@ function handleSave() {
     // 保存原始默认值（如果是旧数据，现在也会被设置）
     originalUrl: originalUrl,
     originalImage: originalImage,
+    // 保存裁剪位置（如果为 auto 则不保存，使用默认行为）
+    cropPosition: cropPosition.value === 'auto' ? undefined : cropPosition.value,
   }
   
   emit('save', updatedItem)
@@ -186,14 +378,42 @@ function handleMouseUp(event: MouseEvent) {
         <!-- 图片预览 -->
         <div class="form-group">
           <label>图片预览</label>
-          <div class="image-preview-container">
+          <div class="image-preview-container" v-if="imagePreview">
+            <!-- 原图（尽量大，不拉伸） -->
             <img
-              v-if="imagePreview"
+              ref="originalImageRef"
               :src="imagePreview"
-              alt="预览"
-              class="image-preview"
+              alt="原图"
+              class="image-preview-original"
+              @load="updatePreviewCrop"
             />
-            <div v-else class="image-placeholder">暂无图片</div>
+            <!-- 遮罩层：将白框外的部分加暗 -->
+            <div class="image-preview-overlay" :style="overlayStyle"></div>
+            <!-- 预览区域（白色框框选的部分就是预览结果） -->
+            <div class="image-preview-mask" :style="previewMaskStyle"></div>
+          </div>
+          <div v-else class="image-placeholder">暂无图片</div>
+        </div>
+        
+        <!-- 裁剪位置设置 -->
+        <div class="form-group">
+          <label>裁剪位置</label>
+          <select
+            v-model="previewCropPosition"
+            class="form-input"
+            @change="cropPosition = previewCropPosition"
+            :disabled="!imagePreview"
+          >
+            <option value="auto">自动（根据图片比例）</option>
+            <option value="center top">顶部居中</option>
+            <option value="center center">中心</option>
+            <option value="center bottom">底部居中</option>
+            <option value="left center">左侧居中</option>
+            <option value="right center">右侧居中</option>
+          </select>
+          <div class="form-hint">
+            选择图片在卡片中的显示位置。自动模式会根据图片宽高比智能选择。
+            <span v-if="!imagePreview" style="color: var(--text-secondary);">（请先设置图片）</span>
           </div>
         </div>
         
@@ -347,6 +567,12 @@ function handleMouseUp(event: MouseEvent) {
   border-color: var(--border-light-color);
 }
 
+.form-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: var(--bg-light-color);
+}
+
 .form-file-input {
   width: 100%;
   padding: 10px;
@@ -365,20 +591,49 @@ function handleMouseUp(event: MouseEvent) {
 }
 
 .image-preview-container {
+  position: relative;
   width: 100%;
-  height: 200px;
+  min-height: 300px;
+  max-height: 500px;
   border: 2px solid var(--border-color);
+  overflow: visible;
+  background: var(--bg-light-color);
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  background: var(--bg-light-color);
+  padding: 20px;
+  box-sizing: border-box;
 }
 
-.image-preview {
+.image-preview-original {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
-  max-height: 100%;
+  max-height: 460px;
   object-fit: contain;
+  display: block;
+}
+
+.image-preview-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.image-preview-mask {
+  position: absolute;
+  overflow: hidden;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+  z-index: 1;
+  background: transparent;
+  pointer-events: none;
+  /* 大小通过内联样式动态设置，保持3:4比例 */
 }
 
 .image-placeholder {
