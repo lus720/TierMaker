@@ -7,7 +7,7 @@
 - 🎨 **黑白极简风格** - 简洁的黑白设计，专注于内容
 - 📊 **自定义评分等级** - 支持自定义评分等级（S, A, B, C, D 等）
 - 📝 **多行布局** - 每个评分等级可以有多行，灵活排列
-- 🔍 **多数据源支持** - 集成 Bangumi、VNDB、AniDB 三大数据源
+- 🔍 **多数据源支持** - 集成 Bangumi 作品和角色搜索，支持本地上传
 - 🌐 **NSFW 内容支持** - Bangumi API 支持 Access Token 访问 NSFW 内容
 - 💾 **本地存储** - 数据自动保存到浏览器本地存储
 - 🎯 **拖拽排序** - 支持拖拽调整动画顺序
@@ -63,10 +63,16 @@ npm run preview
 
 1. 点击任意空位（显示 "+" 的地方）
 2. 在弹出的搜索框中：
-   - 选择数据源（Bangumi / VNDB / AniDB）
-   - 输入作品名称或 ID
+   - 选择数据源（Bangumi 作品 / Bangumi 角色 / 本地上传）
+   - 输入作品名称进行搜索，或上传本地图片
    - 从搜索结果中选择要添加的作品
 3. 作品会自动添加到对应位置
+
+### 2.1 编辑作品
+
+- 点击作品卡片可以编辑作品信息
+- 支持修改图片、名称、日期等
+- 支持图片裁剪和预览
 
 ### 3. 添加新行
 
@@ -94,41 +100,20 @@ npm run preview
 
 - **支持内容类型**：书籍、动画、音乐、游戏、三次元
 - **搜索功能**：支持通过作品名称搜索
+- **角色搜索**：支持搜索 Bangumi 角色
 - **NSFW 支持**：配置 Access Token 后可访问 NSFW 内容
 - **API 文档**：[https://bangumi.github.io/api/](https://bangumi.github.io/api/)
 - **扩展链接资源**：[BangumiExtLinker](https://github.com/Rhilip/BangumiExtLinker) - Bangumi 与其他元数据网站的 ID 关联数据
 
 **配置 Access Token**（可选，用于访问 NSFW 内容）：
 1. 访问 https://next.bgm.tv/demo/access-token 获取 Access Token
-2. 在 `src/utils/bangumi.ts` 中修改 `BGM_ACCESS_TOKEN` 常量
+2. 在设置页面中配置 Access Token，或直接在 `src/utils/bangumi.ts` 中修改 `BGM_ACCESS_TOKEN` 常量
 
-### VNDB（视觉小说数据库）
+### 本地上传
 
-- **支持内容类型**：视觉小说（Visual Novel）
-- **搜索功能**：支持通过作品名称搜索
-- **API 文档**：https://api.vndb.org/kana
-
-**特点**：
-- 支持多语言标题（包括中文）
-- 提供详细的视觉小说信息
-- 支持分页加载
-
-### AniDB
-
-- **支持内容类型**：动画
-- **搜索功能**：使用本地 `anime-titles.dat` 文件进行搜索
-- **查询方式**：支持通过作品名称或 AID（AniDB ID）查询
-- **API 文档**：[AniDB HTTP API Definition](https://wiki.anidb.net/HTTP_API_Definition#Anime)
-
-**配置说明**：
-- 需要将 `anime-titles.dat` 文件放置在 `public` 目录
-- 文件可以从 https://wiki.anidb.net/API#Anime_Titles 下载
-- 文件会每日更新，建议定期更新
-
-**注意**：
-- AniDB HTTP API 不支持直接搜索，需要使用本地标题索引
-- 某些动画可能没有封面图（这是 AniDB 数据库的正常情况）
-- ⚠️ AniDB 目前不太稳定，可能遇到 API 封禁等问题
+- **支持功能**：上传本地图片作为作品封面
+- **自定义标题**：可以为上传的图片设置自定义标题
+- **图片裁剪**：支持图片裁剪和预览功能
 
 ## 🛠️ 技术栈
 
@@ -136,28 +121,25 @@ npm run preview
 - **TypeScript** - 类型安全的 JavaScript
 - **Vite** - 下一代前端构建工具
 - **SortableJS** - 拖拽排序功能
+- **html2canvas** - 图片导出功能
+- **jsPDF** - PDF 导出功能
 - **Bangumi API** - 番组计划 API
-- **VNDB API** - 视觉小说数据库 API
-- **AniDB API** - 动画数据库 API
 
 ## 📝 项目结构
 
 ```
 tier-list-simple/
-├── public/
-│   └── anime-titles.dat    # AniDB 标题索引文件（需要手动下载）
 ├── src/
 │   ├── components/          # Vue 组件
 │   │   ├── TierList.vue    # 主列表组件
 │   │   ├── TierRow.vue     # 行组件（支持拖拽）
 │   │   ├── SearchModal.vue # 搜索模态框（支持多数据源）
+│   │   ├── EditItemModal.vue # 编辑作品模态框
 │   │   └── ConfigModal.vue # 配置模态框
 │   ├── utils/              # 工具函数
 │   │   ├── bangumi.ts      # Bangumi API 封装
-│   │   ├── vndb.ts         # VNDB API 封装
-│   │   ├── anidb.ts        # AniDB API 封装
-│   │   ├── anidb-titles.ts # AniDB 标题索引工具
-│   │   └── storage.ts     # 本地存储工具
+│   │   ├── storage.ts      # 本地存储工具
+│   │   └── url.ts          # URL 处理工具
 │   ├── types.ts            # TypeScript 类型定义
 │   ├── App.vue             # 根组件
 │   ├── main.ts             # 入口文件
@@ -176,38 +158,15 @@ tier-list-simple/
 **基本使用**：
 - 项目使用 Bangumi 公开 API，无需配置即可使用
 - 默认支持搜索书籍、动画、音乐、游戏、三次元等内容
+- 支持搜索 Bangumi 角色
 
 **NSFW 内容支持**（可选）：
 1. 访问 https://next.bgm.tv/demo/access-token 获取 Access Token
-2. 编辑 `src/utils/bangumi.ts`，修改 `BGM_ACCESS_TOKEN` 常量：
+2. 在设置页面中配置 Access Token，或编辑 `src/utils/bangumi.ts`，修改 `BGM_ACCESS_TOKEN` 常量：
    ```typescript
    const BGM_ACCESS_TOKEN = 'YOUR_ACCESS_TOKEN_HERE'
    ```
 3. 配置后即可搜索和访问 NSFW 内容
-
-### VNDB API
-
-- VNDB API 无需配置，可直接使用
-- 支持通过作品名称搜索视觉小说
-- 自动处理中文标题显示
-
-### AniDB API
-
-**必需配置**：
-1. 下载 `anime-titles.dat` 文件：
-   - 访问 https://wiki.anidb.net/API#Anime_Titles
-   - 下载 `anime-titles.dat.gz` 并解压
-   - 将解压后的 `anime-titles.dat` 文件放置在 `public` 目录
-
-2. 文件更新：
-   - AniDB 每日更新标题文件
-   - 建议定期更新以获取最新数据
-   - 更新后无需重启应用，刷新页面即可
-
-**使用说明**：
-- 支持通过动画名称搜索（使用本地索引）
-- 支持直接输入 AID（AniDB ID）查询
-- 如果 API 查询失败，仍可使用本地标题信息显示结果
 
 ## 📊 数据格式
 
@@ -252,52 +211,39 @@ tier-list-simple/
 ### Bangumi API
 
 - **搜索端点**：`POST https://api.bgm.tv/v0/search/subjects`
+- **角色搜索端点**：`POST https://api.bgm.tv/v0/search/characters`
 - **详情端点**：`GET https://api.bgm.tv/v0/subjects/{id}`
 - **API 文档**：[https://bangumi.github.io/api/](https://bangumi.github.io/api/)
 - **扩展资源**：[BangumiExtLinker](https://github.com/Rhilip/BangumiExtLinker) - Bangumi 与其他元数据网站的 ID 关联数据
-
-### VNDB API
-
-- **搜索端点**：`POST https://api.vndb.org/kana/vn`
-- **文档**：https://api.vndb.org/kana
-
-### AniDB API
-
-- **查询端点**：`POST http://api.anidb.net:9001/httpapi?request=anime`
-- **API 文档**：[AniDB HTTP API Definition](https://wiki.anidb.net/HTTP_API_Definition#Anime)
-- **标题文件**：https://wiki.anidb.net/API#Anime_Titles
 
 ## ⚠️ 注意事项
 
 1. **API 限制**：
    - Bangumi API 有频率限制，频繁请求可能被限制
-   - VNDB API 有请求频率限制
-   - AniDB API 使用 HTTP 协议，可能遇到 CORS 问题
+   - 建议合理控制搜索频率，避免触发限制
 
 2. **数据存储**：
    - 数据存储在浏览器本地存储（localStorage）
    - 清除浏览器数据会丢失所有数据
    - 建议定期导出数据备份
 
-3. **AniDB 配置**：
-   - 必须配置 `anime-titles.dat` 文件才能使用搜索功能
-   - 文件较大（约 3-4MB），首次加载可能需要一些时间
-   - 某些动画可能没有封面图
-
-4. **NSFW 内容**：
+3. **NSFW 内容**：
    - 需要配置 Bangumi Access Token 才能访问 NSFW 内容
    - Token 可能过期，需要定期更新
+   - 可在设置页面中配置 Token
+
+4. **图片处理**：
+   - 本地上传的图片支持裁剪功能
+   - 图片会转换为 base64 格式存储在本地
+   - 大量图片可能影响页面性能
 
 ## 🔮 未来计划
 
 - [ ] 跨行拖拽功能
-- [ ] 导出图片功能
-- [ ] 导入/导出 JSON 数据
 - [ ] 更多搜索筛选选项
 - [ ] 作品详情查看
-- [ ] 响应式优化
-- [ ] 暗色/亮色主题切换
 - [ ] 多语言支持
+- [ ] 更多导出格式支持
 
 ## 📄 许可证
 
@@ -306,10 +252,9 @@ MIT License
 ## 🙏 致谢
 
 - [Bangumi](https://bgm.tv/) - 动画数据来源
-- [VNDB](https://vndb.org/) - 视觉小说数据来源
-- [AniDB](https://anidb.net/) - 动画数据来源
 - [Vue.js](https://vuejs.org/) - 优秀的框架
 - [Vite](https://vitejs.dev/) - 快速的构建工具
+- [SortableJS](https://sortablejs.github.io/Sortable/) - 拖拽排序库
 
 ## 📞 问题反馈
 

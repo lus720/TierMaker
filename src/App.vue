@@ -6,12 +6,14 @@ import TierList from './components/TierList.vue'
 import SearchModal from './components/SearchModal.vue'
 import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
+import CandidatesBox from './components/CandidatesBox.vue'
 import { getItemUrl } from './utils/url'
 import type { Tier, AnimeItem, TierConfig, CropPosition } from './types'
 import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, clearItemsAndTitle, resetSettings, loadThemePreference, loadHideItemNames, loadExportScale, DEFAULT_TIER_CONFIGS, type ExportData } from './utils/storage'
 
 const tiers = ref<Tier[]>([])
 const tierConfigs = ref<TierConfig[]>([])
+const candidates = ref<AnimeItem[]>([]) // 备选作品列表
 const showSearch = ref(false)
 const showConfig = ref(false)
 const showEditItem = ref(false)
@@ -235,6 +237,58 @@ function handleDeleteItem(tierId: string, rowId: string, index: number) {
   }
 }
 
+function handleMoveItemFromCandidates(data: {
+  fromTierId: string
+  fromRowId: string
+  fromIndex: number
+  toTierId: string
+  toRowId: string
+  toIndex: number
+  item: AnimeItem
+}) {
+  // 从备选框拖动到等级框
+  // 如果 toTierId 为空，通过 toRowId 查找对应的 tierId
+  let toTierId = data.toTierId
+  if (!toTierId) {
+    for (const tier of tiers.value) {
+      if (tier.rows.find(r => r.id === data.toRowId)) {
+        toTierId = tier.id
+        break
+      }
+    }
+  }
+  
+  if (!toTierId) return
+  
+  const toTier = tiers.value.find(t => t.id === toTierId)
+  if (!toTier) return
+  
+  const toRow = toTier.rows.find(r => r.id === data.toRowId)
+  if (!toRow) return
+  
+  // 确保源索引有效
+  if (data.fromIndex < 0 || data.fromIndex >= candidates.value.length) {
+    return
+  }
+  
+  // 获取要移动的项目
+  const itemToMove = candidates.value[data.fromIndex]
+  
+  // 从备选框移除
+  candidates.value.splice(data.fromIndex, 1)
+  
+  // 添加到目标行（确保索引有效，排除空位）
+  const targetIndex = Math.min(data.toIndex, toRow.items.length)
+  toRow.items.splice(targetIndex, 0, itemToMove)
+  
+  saveTierData(tiers.value)
+}
+
+function handleReorderCandidates(newItems: AnimeItem[]) {
+  candidates.value = newItems
+  // 备选框不保存到本地存储，只在内存中保存
+}
+
 function handleMoveItem(data: {
   fromTierId: string
   fromRowId: string
@@ -244,6 +298,34 @@ function handleMoveItem(data: {
   toIndex: number
   item: AnimeItem
 }) {
+  // 检查是否拖动到备选框（从等级框拖动到备选框）
+  if (data.toRowId === 'candidates') {
+    // 找到源行
+    const fromTier = tiers.value.find(t => t.id === data.fromTierId)
+    if (!fromTier) return
+    
+    const fromRow = fromTier.rows.find(r => r.id === data.fromRowId)
+    if (!fromRow) return
+    
+    // 确保源索引有效
+    if (data.fromIndex < 0 || data.fromIndex >= fromRow.items.length) {
+      return
+    }
+    
+    // 获取要移动的项目
+    const itemToMove = fromRow.items[data.fromIndex]
+    
+    // 从源行移除
+    fromRow.items.splice(data.fromIndex, 1)
+    
+    // 添加到备选框（确保索引有效）
+    const targetIndex = Math.min(data.toIndex, candidates.value.length)
+    candidates.value.splice(targetIndex, 0, itemToMove)
+    
+    saveTierData(tiers.value)
+    return
+  }
+  
   // 找到源行和目标行
   const fromTier = tiers.value.find(t => t.id === data.fromTierId)
   const toTier = tiers.value.find(t => t.id === data.toTierId)
@@ -277,6 +359,13 @@ function handleMoveItem(data: {
 }
 
 function handleReorder(tierId: string, rowId: string, newItems: AnimeItem[]) {
+  // 如果是备选框的重排序
+  if (rowId === 'candidates') {
+    candidates.value = newItems
+    // 备选框不保存到本地存储
+    return
+  }
+  
   const tier = tiers.value.find(t => t.id === tierId)
   if (!tier) return
   
@@ -432,6 +521,9 @@ function handleClearAll() {
       }],
     }))
     saveTierData(tiers.value)
+    
+    // 清空备选框
+    candidates.value = []
     
     // 重置标题和字体大小
     title.value = 'Tier List'
@@ -740,6 +832,17 @@ async function handleExportImage() {
         const headerLeft = clonedDoc.querySelector('.header-left') as HTMLElement
         if (headerLeft) {
           headerLeft.style.display = 'none'
+        }
+        
+        // 隐藏备选框（保存时不应包含备选作品）
+        const candidatesBox = clonedDoc.querySelector('.candidates-box') as HTMLElement
+        if (candidatesBox) {
+          candidatesBox.style.display = 'none'
+          candidatesBox.style.visibility = 'hidden'
+          candidatesBox.style.height = '0'
+          candidatesBox.style.margin = '0'
+          candidatesBox.style.padding = '0'
+          candidatesBox.style.overflow = 'hidden'
         }
         
         // 3. 处理 Empty Slots
@@ -1055,6 +1158,17 @@ async function handleExportPDF() {
         modals.forEach((modal) => {
           (modal as HTMLElement).style.display = 'none'
         })
+        
+        // 隐藏备选框（保存时不应包含备选作品）
+        const candidatesBox = clonedDoc.querySelector('.candidates-box') as HTMLElement
+        if (candidatesBox) {
+          candidatesBox.style.display = 'none'
+          candidatesBox.style.visibility = 'hidden'
+          candidatesBox.style.height = '0'
+          candidatesBox.style.margin = '0'
+          candidatesBox.style.padding = '0'
+          candidatesBox.style.overflow = 'hidden'
+        }
         
         // 将所有图片URL替换为CORS代理URL，并等待加载后裁剪
         const allImages = clonedDoc.querySelectorAll('img') as NodeListOf<HTMLImageElement>
@@ -1564,6 +1678,16 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
       @edit-item="handleEditItem"
       @move-item="handleMoveItem"
       @reorder="handleReorder"
+      @drag-start="isDragging = true"
+      @drag-end="isDragging = false"
+    />
+
+    <CandidatesBox
+      :items="candidates"
+      :is-dragging="isDragging"
+      :hide-item-names="hideItemNames"
+      @move-item="handleMoveItemFromCandidates"
+      @reorder="handleReorderCandidates"
       @drag-start="isDragging = true"
       @drag-end="isDragging = false"
     />
