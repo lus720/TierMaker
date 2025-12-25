@@ -644,10 +644,116 @@ function handleTouchCancel(index: number) {
 function getLongPressProgress(index: number): number {
   return longPressProgress.value.get(index) || 0
 }
+
+// 处理文件拖放
+function processFile(file: File): Promise<AnimeItem | null> {
+  return new Promise((resolve) => {
+    // 检查文件类型
+    if (!file.type.startsWith('image/')) {
+      console.error('请上传图片文件')
+      resolve(null)
+      return
+    }
+    
+    // 检查文件大小（限制为 10MB）
+    if (file.size > 10 * 1024 * 1024) {
+      console.error('图片大小不能超过 10MB')
+      resolve(null)
+      return
+    }
+    
+    // 读取文件并转换为 base64
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const result = e.target?.result as string
+      
+      // 使用文件名（去掉扩展名）作为作品名
+      const fileName = file.name.replace(/\.[^/.]+$/, '')
+      
+      // 生成唯一的 ID
+      const itemId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      
+      const anime: AnimeItem = {
+        id: itemId,
+        name: fileName || '未命名作品',
+        image: result,
+        originalImage: result,
+      }
+      
+      resolve(anime)
+    }
+    reader.onerror = () => {
+      console.error('图片读取失败')
+      resolve(null)
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+function handleDragOver(event: DragEvent) {
+  // 只处理文件拖放，不影响 Sortable 的内部拖动
+  if (event.dataTransfer?.types.includes('Files')) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+}
+
+function handleDragEnter(event: DragEvent) {
+  // 只处理文件拖放，不影响 Sortable 的内部拖动
+  if (event.dataTransfer?.types.includes('Files')) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+}
+
+function handleDragLeave(event: DragEvent) {
+  // 只处理文件拖放，不影响 Sortable 的内部拖动
+  if (event.dataTransfer?.types.includes('Files')) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+}
+
+async function handleDrop(event: DragEvent) {
+  // 只处理文件拖放，不影响 Sortable 的内部拖动
+  if (!event.dataTransfer?.types.includes('Files')) {
+    return
+  }
+  
+  event.preventDefault()
+  event.stopPropagation()
+  
+  const files = event.dataTransfer?.files
+  if (!files || files.length === 0) return
+  
+  // 处理所有拖放的文件，添加到行的末尾
+  const newItems: AnimeItem[] = []
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]
+    const item = await processFile(file)
+    if (item) {
+      newItems.push(item)
+    }
+  }
+  
+  // 批量添加所有文件到行的末尾
+  if (newItems.length > 0) {
+    const currentItems = [...props.row.items]
+    emit('reorder', [...currentItems, ...newItems])
+  }
+}
 </script>
 
 <template>
-  <div ref="rowElement" class="tier-row" :data-row-id="rowId">
+  <div 
+    ref="rowElement" 
+    class="tier-row" 
+    :data-row-id="rowId"
+    @dragover="handleDragOver"
+    @dragenter="handleDragEnter"
+    @dragleave="handleDragLeave"
+    @drop="handleDrop"
+  >
     <div
       v-for="(item, index) in displayItems"
       :key="`${item.id || 'empty'}-${index}`"

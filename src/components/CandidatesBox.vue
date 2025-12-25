@@ -53,9 +53,110 @@ function handleItemDelete(index: number, event: Event) {
   emit('reorder', newItems)
 }
 
+function handleClearAll() {
+  emit('reorder', [])
+}
+
 function getImageUrl(item: AnimeItem): string {
   // 直接返回图片URL，如果没有则返回空字符串
   return item.image || ''
+}
+
+// 处理文件拖放
+function processFile(file: File): Promise<AnimeItem | null> {
+  return new Promise((resolve) => {
+    // 检查文件类型
+    if (!file.type.startsWith('image/')) {
+      console.error('请上传图片文件')
+      resolve(null)
+      return
+    }
+    
+    // 检查文件大小（限制为 10MB）
+    if (file.size > 10 * 1024 * 1024) {
+      console.error('图片大小不能超过 10MB')
+      resolve(null)
+      return
+    }
+    
+    // 读取文件并转换为 base64
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const result = e.target?.result as string
+      
+      // 使用文件名（去掉扩展名）作为作品名
+      const fileName = file.name.replace(/\.[^/.]+$/, '')
+      
+      // 生成唯一的 ID
+      const itemId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      
+      const anime: AnimeItem = {
+        id: itemId,
+        name: fileName || '未命名作品',
+        image: result,
+        originalImage: result,
+      }
+      
+      resolve(anime)
+    }
+    reader.onerror = () => {
+      console.error('图片读取失败')
+      resolve(null)
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+function handleDragOver(event: DragEvent) {
+  // 只处理文件拖放，不影响 Sortable 的内部拖动
+  if (event.dataTransfer?.types.includes('Files')) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+}
+
+function handleDragEnter(event: DragEvent) {
+  // 只处理文件拖放，不影响 Sortable 的内部拖动
+  if (event.dataTransfer?.types.includes('Files')) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+}
+
+function handleDragLeave(event: DragEvent) {
+  // 只处理文件拖放，不影响 Sortable 的内部拖动
+  if (event.dataTransfer?.types.includes('Files')) {
+    event.preventDefault()
+    event.stopPropagation()
+  }
+}
+
+async function handleDrop(event: DragEvent) {
+  // 只处理文件拖放，不影响 Sortable 的内部拖动
+  if (!event.dataTransfer?.types.includes('Files')) {
+    return
+  }
+  
+  event.preventDefault()
+  event.stopPropagation()
+  
+  const files = event.dataTransfer?.files
+  if (!files || files.length === 0) return
+  
+  // 处理所有拖放的文件
+  const newItems: AnimeItem[] = []
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]
+    const item = await processFile(file)
+    if (item) {
+      newItems.push(item)
+    }
+  }
+  
+  // 批量添加所有文件
+  if (newItems.length > 0) {
+    emit('reorder', [...props.items, ...newItems])
+  }
 }
 
 function handleImageError(event: Event) {
@@ -133,14 +234,28 @@ onMounted(() => {
   <div class="candidates-box">
     <div class="candidates-header">
       <h3 class="candidates-title">备选作品</h3>
-      <button class="btn-add" @click="showSearch = true" title="添加作品">
-        + 添加
-      </button>
+      <div class="header-buttons">
+        <button 
+          v-if="displayItems.length > 0"
+          class="btn-clear" 
+          @click="handleClearAll" 
+          title="清空备选选项"
+        >
+          清空
+        </button>
+        <button class="btn-add" @click="showSearch = true" title="添加作品">
+          + 添加
+        </button>
+      </div>
     </div>
     <div
       ref="candidatesElement"
       class="candidates-grid"
       data-row-id="candidates"
+      @dragover="handleDragOver"
+      @dragenter="handleDragEnter"
+      @dragleave="handleDragLeave"
+      @drop="handleDrop"
     >
       <div
         v-for="(item, index) in displayItems"
@@ -173,6 +288,7 @@ onMounted(() => {
     
     <SearchModal
       v-if="showSearch"
+      :enable-import-characters="true"
       @close="showSearch = false"
       @select="handleSelectAnime"
       @select-multiple="handleSelectMultiple"
@@ -204,7 +320,14 @@ onMounted(() => {
   margin: 0;
 }
 
-.btn-add {
+.header-buttons {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn-add,
+.btn-clear {
   padding: 8px 16px;
   border: 2px solid var(--border-color);
   background: var(--bg-color);
@@ -219,6 +342,16 @@ onMounted(() => {
 .btn-add:hover {
   background: var(--border-color);
   color: var(--bg-color);
+}
+
+.btn-clear {
+  border-color: #cc6666;
+  color: #cc6666;
+}
+
+.btn-clear:hover {
+  background: #cc6666;
+  color: #ffffff;
 }
 
 .candidates-grid {

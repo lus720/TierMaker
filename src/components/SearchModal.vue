@@ -5,6 +5,12 @@ import { generateDefaultUrl } from '../utils/url'
 import { saveLastSearchSource, loadLastSearchSource } from '../utils/storage'
 import type { AnimeItem, ApiSource, SearchResult } from '../types'
 
+const props = withDefaults(defineProps<{
+  enableImportCharacters?: boolean // 是否启用批量导入角色功能
+}>(), {
+  enableImportCharacters: false
+})
+
 const emit = defineEmits<{
   close: []
   select: [anime: AnimeItem]
@@ -584,9 +590,9 @@ function handleImageError(event: Event) {
               </div>
               <div v-if="getResultMeta(result)" class="result-date">{{ getResultMeta(result) }}</div>
             </div>
-            <!-- 仅在 bangumi 搜索结果中显示导入角色按钮 -->
+            <!-- 仅在候补框（enableImportCharacters=true）的 bangumi 搜索结果中显示导入角色按钮 -->
             <button
-              v-if="apiSource === 'bangumi' && typeof result.id === 'number'"
+              v-if="enableImportCharacters && apiSource === 'bangumi' && typeof result.id === 'number'"
               class="import-characters-btn"
               :disabled="importingCharacters === result.id"
               @click.stop="handleImportCharacters(result.id as number, $event)"
