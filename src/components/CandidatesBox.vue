@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import Sortable from 'sortablejs'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { registerContainer, unregisterContainer } from '../utils/dragManager'
 import SearchModal from './SearchModal.vue'
 import type { AnimeItem } from '../types'
 
@@ -28,7 +28,6 @@ const emit = defineEmits<{
 }>()
 
 const candidatesElement = ref<HTMLElement | null>(null)
-let sortableInstance: Sortable | null = null
 const showSearch = ref(false)
 
 const displayItems = computed(() => {
@@ -108,7 +107,7 @@ function processFile(file: File): Promise<AnimeItem | null> {
 }
 
 function handleDragOver(event: DragEvent) {
-  // 只处理文件拖放，不影响 Sortable 的内部拖动
+  // 只处理文件拖放，不影响 Dragula 的内部拖动
   if (event.dataTransfer?.types.includes('Files')) {
     event.preventDefault()
     event.stopPropagation()
@@ -116,7 +115,7 @@ function handleDragOver(event: DragEvent) {
 }
 
 function handleDragEnter(event: DragEvent) {
-  // 只处理文件拖放，不影响 Sortable 的内部拖动
+  // 只处理文件拖放，不影响 Dragula 的内部拖动
   if (event.dataTransfer?.types.includes('Files')) {
     event.preventDefault()
     event.stopPropagation()
@@ -124,15 +123,15 @@ function handleDragEnter(event: DragEvent) {
 }
 
 function handleDragLeave(event: DragEvent) {
-  // 只处理文件拖放，不影响 Sortable 的内部拖动
+  // 只处理文件拖放，不影响 Dragula 的内部拖动
   if (event.dataTransfer?.types.includes('Files')) {
     event.preventDefault()
     event.stopPropagation()
   }
 }
 
-async function handleDrop(event: DragEvent) {
-  // 只处理文件拖放，不影响 Sortable 的内部拖动
+async function handleFileDrop(event: DragEvent) {
+  // 只处理文件拖放，不影响 Dragula 的内部拖动
   if (!event.dataTransfer?.types.includes('Files')) {
     return
   }
@@ -164,69 +163,76 @@ function handleImageError(event: Event) {
   img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj7lm77niYfliqDovb3lpLHotKU8L3RleHQ+PC9zdmc+'
 }
 
+// Dragula drop 处理函数
+function handleDrop(el: Element, target: Element, source: Element, sibling: Element | null) {
+  const sourceRowId = source.getAttribute('data-row-id')
+  const targetRowId = target.getAttribute('data-row-id')
+  
+  if (!sourceRowId || !targetRowId) return
+  
+  // 计算新位置索引
+  let newIndex = 0
+  if (sibling) {
+    const children = Array.from(target.children).filter(c => !c.classList.contains('gu-transit'))
+    newIndex = children.indexOf(sibling)
+    if (newIndex === -1) newIndex = children.length
+  } else {
+    const children = Array.from(target.children).filter(c => !c.classList.contains('gu-transit'))
+    newIndex = children.length
+  }
+  
+  // 获取被拖动元素的原始索引
+  const itemId = el.getAttribute('data-item-id')
+  const oldIndex = props.items.findIndex(item => String(item.id) === itemId)
+  
+  // 如果是从我们这里拖走的（到其他容器）
+  if (sourceRowId === 'candidates' && targetRowId !== 'candidates') {
+    if (oldIndex >= 0) {
+      const movedItem = props.items[oldIndex]
+      emit('move-item', {
+        fromTierId: 'candidates',
+        fromRowId: 'candidates',
+        fromIndex: oldIndex,
+        toTierId: '',
+        toRowId: targetRowId,
+        toIndex: newIndex,
+        item: movedItem,
+      })
+    }
+    return
+  }
+  
+  // 如果是同一容器内的重排序
+  if (sourceRowId === 'candidates' && targetRowId === 'candidates') {
+    if (oldIndex >= 0 && oldIndex !== newIndex) {
+      const items = [...props.items]
+      const targetIndex = Math.min(newIndex, items.length - 1)
+      const [moved] = items.splice(oldIndex, 1)
+      items.splice(targetIndex, 0, moved)
+      emit('reorder', items)
+    }
+  }
+}
+
 onMounted(() => {
   if (candidatesElement.value) {
-    sortableInstance = new Sortable(candidatesElement.value, {
-      animation: 150,
-      filter: '.delete-btn',
-      group: {
-        name: 'tier-items',
-        pull: true,
-        put: true,
-      },
-      draggable: '.candidate-item',
-      ghostClass: 'sortable-ghost',
-      chosenClass: 'sortable-chosen',
-      dragClass: 'sortable-drag',
-      forceFallback: false,
-      fallbackOnBody: true,
-      swapThreshold: 0.65,
-      onStart: () => {
+    // 注册到共享 Dragula 管理器
+    registerContainer('candidates', candidatesElement.value, {
+      containerId: 'candidates',
+      onDrop: handleDrop,
+      onDragStart: () => {
         emit('drag-start')
       },
-      onEnd: (evt) => {
+      onDragEnd: () => {
         emit('drag-end')
-        const oldIndex = evt.oldIndex
-        const newIndex = evt.newIndex
-        const toElement = evt.to as HTMLElement
-        const fromElement = evt.from as HTMLElement
-        
-        if (oldIndex === undefined || newIndex === undefined) {
-          return
-        }
-        
-        // 获取目标行的信息
-        const toRowId = toElement.getAttribute('data-row-id')
-        const fromRowId = fromElement.getAttribute('data-row-id')
-        
-        // 如果是跨容器拖动（从备选框拖动到等级框）
-        if (toRowId && toRowId !== 'candidates' && evt.from !== evt.to) {
-          if (oldIndex >= 0 && oldIndex < props.items.length) {
-            const movedItem = props.items[oldIndex]
-            
-            // 触发跨容器拖动事件（toTierId 会在 App.vue 中通过 toRowId 查找）
-            emit('move-item', {
-              fromIndex: oldIndex,
-              fromTierId: 'candidates',
-              fromRowId: 'candidates',
-              toTierId: '', // 留空，在 App.vue 中通过 toRowId 查找
-              toRowId,
-              toIndex: newIndex,
-              item: movedItem,
-            })
-          }
-        } else if (evt.from === evt.to && oldIndex !== newIndex) {
-          // 同一容器内的重新排序（备选框内）
-          const newItems = [...props.items]
-          const [removed] = newItems.splice(oldIndex, 1)
-          newItems.splice(newIndex, 0, removed)
-          emit('reorder', newItems)
-        }
-        // 从等级框拖动到备选框的情况会在 TierRow 的 onEnd 中触发 move-item 事件
-        // 然后在 App.vue 的 handleMoveItem 中处理，这里不需要额外处理
-      },
+      }
     })
   }
+})
+
+onBeforeUnmount(() => {
+  // 从共享 Dragula 管理器注销
+  unregisterContainer('candidates')
 })
 </script>
 
@@ -255,12 +261,13 @@ onMounted(() => {
       @dragover="handleDragOver"
       @dragenter="handleDragEnter"
       @dragleave="handleDragLeave"
-      @drop="handleDrop"
+      @drop="handleFileDrop"
     >
       <div
         v-for="(item, index) in displayItems"
         :key="item.id || index"
         class="candidate-item"
+        :data-item-id="item.id || ''"
       >
         <img
           :src="getImageUrl(item)"
@@ -436,19 +443,21 @@ onMounted(() => {
   font-size: 14px;
 }
 
-/* 拖动样式 */
-.candidate-item.sortable-ghost {
+/* 拖动样式 (Dragula) */
+.candidate-item.gu-transit {
   opacity: 0.4;
 }
 
-.candidate-item.sortable-chosen {
+.candidate-item:active {
   cursor: grabbing;
 }
 
-.candidate-item.sortable-drag {
+.candidate-item.gu-mirror {
   opacity: 1 !important;
   transform: rotate(5deg);
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+  z-index: 9999;
+  pointer-events: none;
 }
 </style>
 

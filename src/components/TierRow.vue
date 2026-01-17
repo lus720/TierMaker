@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import Sortable from 'sortablejs'
+import { registerContainer, unregisterContainer, getElementIndex, getContainerId } from '../utils/dragManager'
 import { getItemUrl } from '../utils/url'
 import type { TierRow, AnimeItem } from '../types'
 
@@ -31,7 +31,6 @@ const emit = defineEmits<{
 }>()
 
 const rowElement = ref<HTMLElement | null>(null)
-let sortableInstance: Sortable | null = null
 
 const displayItems = computed(() => {
   // 始终显示至少一个空位（包括导出图片时，以保持高度统一）
@@ -41,64 +40,80 @@ const displayItems = computed(() => {
   return items
 })
 
+// Dragula drop 处理函数
+function handleDrop(el: Element, target: Element, source: Element, sibling: Element | null) {
+  const sourceRowId = source.getAttribute('data-row-id')
+  const targetRowId = target.getAttribute('data-row-id')
+  
+  if (!sourceRowId || !targetRowId) return
+  
+  // 计算新位置索引
+  let newIndex = 0
+  if (sibling) {
+    // 如果有 sibling，找到它的索引
+    const children = Array.from(target.children).filter(c => !c.classList.contains('gu-transit'))
+    newIndex = children.indexOf(sibling)
+    if (newIndex === -1) newIndex = children.length
+  } else {
+    // 如果没有 sibling，放到最后（但要排除空位）
+    const children = Array.from(target.children).filter(c => !c.classList.contains('gu-transit') && !c.classList.contains('empty'))
+    newIndex = children.length
+  }
+  
+  // 获取被拖动元素的原始索引
+  const itemId = el.getAttribute('data-item-id')
+  const oldIndex = props.row.items.findIndex(item => String(item.id) === itemId)
+  
+  // 如果这不是我们的元素被拖走，而是拖进来的
+  if (targetRowId === props.rowId && sourceRowId !== props.rowId) {
+    // 有其他组件会处理，这里不需要做什么
+    // 因为 drop 事件只在目标容器触发一次
+    return
+  }
+  
+  // 如果是从我们这里拖走的
+  if (sourceRowId === props.rowId && targetRowId !== props.rowId) {
+    if (oldIndex >= 0) {
+      const movedItem = props.row.items[oldIndex]
+      emit('move-item', {
+        fromRowId: sourceRowId,
+        toRowId: targetRowId,
+        fromIndex: oldIndex,
+        toIndex: newIndex,
+        item: movedItem,
+      })
+    }
+    return
+  }
+  
+  // 如果是同一容器内的重排序
+  if (sourceRowId === props.rowId && targetRowId === props.rowId) {
+    if (oldIndex >= 0 && oldIndex !== newIndex) {
+      const items = [...props.row.items]
+      const targetIndex = Math.min(newIndex, items.length - 1)
+      const [moved] = items.splice(oldIndex, 1)
+      items.splice(targetIndex, 0, moved)
+      emit('reorder', items)
+    }
+  }
+  
+  // 确保空位在最后
+  nextTick(() => {
+    ensureEmptySlotLast(target as HTMLElement)
+    if (source !== target) {
+      ensureEmptySlotLast(source as HTMLElement)
+    }
+  })
+}
+
 onMounted(() => {
   if (rowElement.value) {
-    sortableInstance = new Sortable(rowElement.value, {
-      animation: 150,
-      // 移除 handle 选项，让整个 tier-item 都可以拖动（除了空位和删除按钮）
-      filter: '.empty, .delete-btn', // 过滤空位和删除按钮
-      group: {
-        name: 'tier-items',
-        pull: true, // 允许拖出
-        put: true, // 允许放入
-      },
-      draggable: '.tier-item:not(.empty)', // 只有非空项可以拖动
-      ghostClass: 'sortable-ghost', // 拖动时的半透明样式（原位置）
-      chosenClass: 'sortable-chosen', // 选中时的样式
-      dragClass: 'sortable-drag', // 拖动中的样式（跟随鼠标的）
-      forceFallback: false, // 使用原生 HTML5 拖动
-      fallbackOnBody: true,
-      swapThreshold: 0.65,
-      invertSwap: false, // 不反转交换
-      preventOnFilter: true, // 过滤的元素阻止默认行为
-      onMove: (evt) => {
-        const related = evt.related as HTMLElement
-        const to = evt.to as HTMLElement
-        
-        if (!related || !to) {
-          return true
-        }
-        
-        // 如果 related 是空位
-        if (related.classList.contains('empty')) {
-          // 如果尝试插入到空位之后，不允许
-          if (evt.willInsertAfter) {
-            return false
-          }
-          // 如果插入到空位之前，允许（预览位置会显示在空位之前）
-          return true
-        }
-        
-        // 允许移动到任何容器（包括其他等级）
-        return true
-      },
-      onChange: (evt) => {
-        // 在拖动过程中，确保空位始终在最后
-        const to = evt.to as HTMLElement
-        if (to) {
-          ensureEmptySlotLast(to)
-        }
-      },
-      onStart: (evt) => {
-        // 拖动开始时，立刻终止所有长按并恢复到正常状态
+    // 注册到共享 Dragula 管理器
+    registerContainer(props.rowId, rowElement.value, {
+      containerId: props.rowId,
+      onDrop: handleDrop,
+      onDragStart: () => {
         emit('drag-start')
-        
-        // 确保所有容器中的空位都在最后（包括当前容器和其他容器）
-        const allTierRows = document.querySelectorAll('[data-row-id]')
-        allTierRows.forEach(row => {
-          ensureEmptySlotLast(row as HTMLElement)
-        })
-        
         // 清除所有项目的长按状态
         longPressTimers.value.forEach((timer, idx) => {
           clearTimeout(timer)
@@ -111,77 +126,18 @@ onMounted(() => {
         })
         progressIntervals.value.clear()
       },
-      onEnd: (evt) => {
+      onDragEnd: () => {
         emit('drag-end')
-        const oldIndex = evt.oldIndex
-        const newIndex = evt.newIndex
-        const fromElement = evt.from as HTMLElement
-        const toElement = evt.to as HTMLElement
-        
-        // 获取源和目标行的信息
-        const fromRowId = fromElement.getAttribute('data-row-id')
-        const toRowId = toElement.getAttribute('data-row-id')
-        
-        // 检查是否是真正的跨容器拖动
-        const isCrossContainer = fromElement !== toElement
-        
-        if (oldIndex === undefined || newIndex === undefined) {
-          // 确保空位在最后
-          nextTick(() => {
-            ensureEmptySlotLast(fromElement)
-            ensureEmptySlotLast(toElement)
-          })
-          return
-        }
-        
-        // 如果是跨容器拖动
-        if (isCrossContainer && fromRowId && toRowId) {
-          // 只在源行的 onEnd 中处理跨行拖动
-          if (fromRowId === props.rowId) {
-            // 确保索引有效（排除空位）
-            const fromItems = props.row.items
-            if (oldIndex >= 0 && oldIndex < fromItems.length) {
-              const movedItem = fromItems[oldIndex]
-              
-              // 触发跨行拖动事件
-              emit('move-item', {
-                fromRowId,
-                toRowId,
-                fromIndex: oldIndex,
-                toIndex: newIndex,
-                item: movedItem,
-              })
-            }
-          }
-        } else if (!isCrossContainer && oldIndex !== newIndex && fromRowId === props.rowId) {
-          // 同一行内拖动，只在当前行处理
-          const fromItems = props.row.items
-          if (oldIndex >= 0 && oldIndex < fromItems.length) {
-            const items = [...fromItems]
-            // 确保目标索引不超过实际项目数（排除空位）
-            const targetIndex = Math.min(newIndex, items.length - 1)
-            const [moved] = items.splice(oldIndex, 1)
-            items.splice(targetIndex, 0, moved)
-            emit('reorder', items)
-          }
-        }
-        
-        // 确保空位始终在最后（源和目标都要处理）
-        nextTick(() => {
-          ensureEmptySlotLast(fromElement)
-          ensureEmptySlotLast(toElement)
-        })
-      },
+      }
     })
   }
 })
 
 onBeforeUnmount(() => {
-  if (sortableInstance) {
-    sortableInstance.destroy()
-    sortableInstance = null
-  }
+  // 从共享 Dragula 管理器注销
+  unregisterContainer(props.rowId)
 })
+
 
 // 确保空位在最后
 function ensureEmptySlotLast(container: HTMLElement) {
@@ -714,8 +670,8 @@ function handleDragLeave(event: DragEvent) {
   }
 }
 
-async function handleDrop(event: DragEvent) {
-  // 只处理文件拖放，不影响 Sortable 的内部拖动
+async function handleFileDrop(event: DragEvent) {
+  // 只处理文件拖放，不影响 Dragula 的内部拖动
   if (!event.dataTransfer?.types.includes('Files')) {
     return
   }
@@ -752,12 +708,13 @@ async function handleDrop(event: DragEvent) {
     @dragover="handleDragOver"
     @dragenter="handleDragEnter"
     @dragleave="handleDragLeave"
-    @drop="handleDrop"
+    @drop="handleFileDrop"
   >
     <div
       v-for="(item, index) in displayItems"
       :key="`${item.id || 'empty'}-${index}`"
       class="tier-item"
+      :data-item-id="item.id || ''"
       :class="{ 
         'empty': !item.id,
         'duplicate': item.id && props.duplicateItemIds?.has(item.id),
@@ -878,25 +835,27 @@ async function handleDrop(event: DragEvent) {
   box-shadow: 0 0 8px rgba(255, 0, 0, 0.5);
 }
 
-/* 拖动时原位置的半透明样式 */
-.tier-item.sortable-ghost {
+/* 拖动时原位置的半透明样式 (Dragula: gu-transit) */
+.tier-item.gu-transit {
   opacity: 0.4;
 }
 
-/* 拖动中跟随鼠标的条目样式 */
-.tier-item.sortable-drag {
+/* 拖动中跟随鼠标的条目样式 (Dragula: gu-mirror) */
+.tier-item.gu-mirror {
   opacity: 1 !important;
   transform: rotate(5deg);
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.3);
+  z-index: 9999;
+  pointer-events: none;
 }
 
 /* 拖动中的条目不显示进度条 */
-.tier-item.sortable-drag .long-press-loader {
+.tier-item.gu-mirror .long-press-loader {
   display: none !important;
 }
 
 /* 选中时的样式 */
-.tier-item.sortable-chosen {
+.tier-item:active {
   cursor: grabbing;
 }
 

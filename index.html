@@ -6,6 +6,10 @@
   <title>Tier List - 动画评分表</title>
   <meta name="description" content="动画评分表生成器，支持自定义评分等级和多行布局，集成 Bangumi API 搜索">
   <script>
+    // Polyfill for Node.js global (required by Dragula)
+    window.global = window;
+  </script>
+  <script>
     // 在页面渲染前设置主题，避免闪烁
     (function() {
       try {
