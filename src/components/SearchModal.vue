@@ -136,8 +136,9 @@ function handleSelect(result: SearchResult) {
   
   const anime: AnimeItem = {
     id: itemId,
+    // 优先使用中文名，如果没有则使用原名
     name: (result as any).name_cn || result.name,
-    name_cn: (result as any).name_cn || undefined,
+    // name_cn: (result as any).name_cn || undefined, // 不再保存单独的 name_cn
     image: imageUrl,
     date: (result as any).date || undefined,
     score: (result as any).score || undefined,
@@ -193,10 +194,13 @@ async function handleImportCharacters(subjectId: number, event: Event) {
         hasImage: !!finalImageUrl
       })
       
+      // 优先使用中文名
+      const finalName = character.nameCn || character.name_cn || characterName
+
       const anime: AnimeItem = {
         id: itemId,
-        name: characterName,
-        name_cn: character.nameCn || character.name_cn || undefined,
+        name: finalName,
+        // name_cn: character.nameCn || character.name_cn || undefined, // 不再保存单独的 name_cn
         image: finalImageUrl,
         originalUrl: defaultUrl,
         originalImage: finalImageUrl,
@@ -635,7 +639,7 @@ function handleImageError(event: Event) {
   background: var(--bg-color);
   border: 2px solid var(--border-color);
   width: 90%;
-  max-width: 800px;
+  max-width: 700px;
   height: 80vh;
   max-height: 80vh;
   display: flex;

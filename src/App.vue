@@ -6,14 +6,20 @@ import TierList from './components/TierList.vue'
 import SearchModal from './components/SearchModal.vue'
 import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
-import CandidatesBox from './components/CandidatesBox.vue'
+
 import { getItemUrl } from './utils/url'
 import type { Tier, AnimeItem, TierConfig, CropPosition } from './types'
 import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, clearItemsAndTitle, resetSettings, loadThemePreference, loadHideItemNames, loadExportScale, DEFAULT_TIER_CONFIGS, type ExportData } from './utils/storage'
 
 const tiers = ref<Tier[]>([])
+const unrankedTiers = ref<Tier[]>([{
+  id: 'unranked',
+  rows: [{
+    id: 'unranked-row-0',
+    items: []
+  }]
+}])
 const tierConfigs = ref<TierConfig[]>([])
-const candidates = ref<AnimeItem[]>([]) // 备选作品列表
 const showSearch = ref(false)
 const showConfig = ref(false)
 const showEditItem = ref(false)
@@ -35,7 +41,8 @@ const duplicateItemIds = computed(() => {
   const idCount = new Map<string | number, number>()
   
   // 统计每个ID出现的次数
-  tiers.value.forEach(tier => {
+  const allTiers = [...tiers.value, ...unrankedTiers.value]
+  allTiers.forEach(tier => {
     tier.rows.forEach(row => {
       row.items.forEach(item => {
         if (item.id) {
@@ -131,6 +138,36 @@ onMounted(() => {
   exportScale.value = loadExportScale()
   tierConfigs.value = loadTierConfigs()
   tiers.value = loadTierData()
+
+  // 数据迁移：将 name_cn 迁移到 name，确保只显示一个名字（优先中文）
+  let hasChanges = false
+  const migrateItem = (item: AnimeItem) => {
+    if (item.name_cn) {
+      // 如果有中文名，覆盖 name，并删除 name_cn
+      if (item.name !== item.name_cn) {
+         item.name = item.name_cn
+         hasChanges = true
+      }
+      delete item.name_cn
+      hasChanges = true // 删除属性也算变更
+    }
+  }
+
+  tiers.value.forEach(tier => {
+    tier.rows.forEach(row => {
+      row.items.forEach(item => {
+        if (item.id) migrateItem(item)
+      })
+    })
+  })
+  
+  // 同样迁移 unrankedTiers (虽然这里还没加载，但为了完整性)
+  // 注意：unrankedTiers 目前是硬编码初始值，如果后续持久化了也需要迁移
+  
+  if (hasChanges) {
+    console.log('🔄 已迁移旧数据到单名字格式')
+    saveTierData(tiers.value)
+  }
   
   // 设置标题的初始内容
   nextTick(() => {
@@ -188,7 +225,8 @@ function handleAddItem(tierId: string, rowId: string, index: number) {
 
 function handleSelectAnime(anime: AnimeItem) {
   if (currentTierId.value && currentRowId.value && currentIndex.value !== null) {
-    const tier = tiers.value.find(t => t.id === currentTierId.value)
+    const allTiers = [...tiers.value, ...unrankedTiers.value]
+    const tier = allTiers.find(t => t.id === currentTierId.value)
     if (tier) {
       const row = tier.rows.find(r => r.id === currentRowId.value)
       if (row) {
@@ -207,7 +245,8 @@ function handleSelectAnime(anime: AnimeItem) {
 }
 
 function handleAddRow(tierId: string) {
-  const tier = tiers.value.find(t => t.id === tierId)
+  const allTiers = [...tiers.value, ...unrankedTiers.value]
+  const tier = allTiers.find(t => t.id === tierId)
   if (tier) {
     const newRowId = `${tierId}-row-${tier.rows.length}`
     tier.rows.push({
@@ -218,7 +257,8 @@ function handleAddRow(tierId: string) {
 }
 
 function handleDeleteRow(tierId: string, rowId: string) {
-  const tier = tiers.value.find(t => t.id === tierId)
+  const allTiers = [...tiers.value, ...unrankedTiers.value]
+  const tier = allTiers.find(t => t.id === tierId)
   if (tier && tier.rows.length > 1) {
     const index = tier.rows.findIndex(r => r.id === rowId)
     if (index !== -1) {
@@ -228,7 +268,8 @@ function handleDeleteRow(tierId: string, rowId: string) {
 }
 
 function handleDeleteItem(tierId: string, rowId: string, index: number) {
-  const tier = tiers.value.find(t => t.id === tierId)
+  const allTiers = [...tiers.value, ...unrankedTiers.value]
+  const tier = allTiers.find(t => t.id === tierId)
   if (tier) {
     const row = tier.rows.find(r => r.id === rowId)
     if (row) {
@@ -237,57 +278,9 @@ function handleDeleteItem(tierId: string, rowId: string, index: number) {
   }
 }
 
-function handleMoveItemFromCandidates(data: {
-  fromTierId: string
-  fromRowId: string
-  fromIndex: number
-  toTierId: string
-  toRowId: string
-  toIndex: number
-  item: AnimeItem
-}) {
-  // 从备选框拖动到等级框
-  // 如果 toTierId 为空，通过 toRowId 查找对应的 tierId
-  let toTierId = data.toTierId
-  if (!toTierId) {
-    for (const tier of tiers.value) {
-      if (tier.rows.find(r => r.id === data.toRowId)) {
-        toTierId = tier.id
-        break
-      }
-    }
-  }
-  
-  if (!toTierId) return
-  
-  const toTier = tiers.value.find(t => t.id === toTierId)
-  if (!toTier) return
-  
-  const toRow = toTier.rows.find(r => r.id === data.toRowId)
-  if (!toRow) return
-  
-  // 确保源索引有效
-  if (data.fromIndex < 0 || data.fromIndex >= candidates.value.length) {
-    return
-  }
-  
-  // 获取要移动的项目
-  const itemToMove = candidates.value[data.fromIndex]
-  
-  // 从备选框移除
-  candidates.value.splice(data.fromIndex, 1)
-  
-  // 添加到目标行（确保索引有效，排除空位）
-  const targetIndex = Math.min(data.toIndex, toRow.items.length)
-  toRow.items.splice(targetIndex, 0, itemToMove)
-  
-  saveTierData(tiers.value)
-}
 
-function handleReorderCandidates(newItems: AnimeItem[]) {
-  candidates.value = newItems
-  // 备选框不保存到本地存储，只在内存中保存
-}
+
+
 
 function handleMoveItem(data: {
   fromTierId: string
@@ -298,42 +291,38 @@ function handleMoveItem(data: {
   toIndex: number
   item: AnimeItem
 }) {
-  // 检查是否拖动到备选框（从等级框拖动到备选框）
-  if (data.toRowId === 'candidates') {
-    // 找到源行
-    const fromTier = tiers.value.find(t => t.id === data.fromTierId)
-    if (!fromTier) return
-    
-    const fromRow = fromTier.rows.find(r => r.id === data.fromRowId)
-    if (!fromRow) return
-    
-    // 确保源索引有效
-    if (data.fromIndex < 0 || data.fromIndex >= fromRow.items.length) {
-      return
+  // 找到源行和目标行
+  // 找到源行和目标行
+  // 必须重新从所有等级中查找，因为 TierList 组件传出来的 TierId 可能是错的（尤其是在 unranked 和 ranked 之间拖动时）
+  const allTiers = [...tiers.value, ...unrankedTiers.value]
+  
+  // 1. 先通过 RowId 找到真正的 Tier 和 Row
+  let realFromTier: Tier | undefined
+  let realFromRow: any
+  let realToTier: Tier | undefined
+  let realToRow: any
+  
+  for (const t of allTiers) {
+    const fRow = t.rows.find(r => r.id === data.fromRowId)
+    if (fRow) {
+      realFromTier = t
+      realFromRow = fRow
     }
-    
-    // 获取要移动的项目
-    const itemToMove = fromRow.items[data.fromIndex]
-    
-    // 从源行移除
-    fromRow.items.splice(data.fromIndex, 1)
-    
-    // 添加到备选框（确保索引有效）
-    const targetIndex = Math.min(data.toIndex, candidates.value.length)
-    candidates.value.splice(targetIndex, 0, itemToMove)
-    
-    saveTierData(tiers.value)
-    return
+    const tRow = t.rows.find(r => r.id === data.toRowId)
+    if (tRow) {
+      realToTier = t
+      realToRow = tRow
+    }
   }
   
-  // 找到源行和目标行
-  const fromTier = tiers.value.find(t => t.id === data.fromTierId)
-  const toTier = tiers.value.find(t => t.id === data.toTierId)
+  if (!realFromTier || !realFromRow || !realToTier || !realToRow) return
   
-  if (!fromTier || !toTier) return
+  // 替换掉 data 中的 TierId
+  data.fromTierId = realFromTier.id
+  data.toTierId = realToTier.id
   
-  const fromRow = fromTier.rows.find(r => r.id === data.fromRowId)
-  const toRow = toTier.rows.find(r => r.id === data.toRowId)
+  const fromRow = realFromRow
+  const toRow = realToRow
   
   if (!fromRow || !toRow) return
   
@@ -359,14 +348,9 @@ function handleMoveItem(data: {
 }
 
 function handleReorder(tierId: string, rowId: string, newItems: AnimeItem[]) {
-  // 如果是备选框的重排序
-  if (rowId === 'candidates') {
-    candidates.value = newItems
-    // 备选框不保存到本地存储
-    return
-  }
-  
-  const tier = tiers.value.find(t => t.id === tierId)
+
+  const allTiers = [...tiers.value, ...unrankedTiers.value]
+  const tier = allTiers.find(t => t.id === tierId)
   if (!tier) return
   
   const row = tier.rows.find(r => r.id === rowId)
@@ -394,7 +378,8 @@ function handleSaveEditItem(updatedItem: AnimeItem) {
   })
   
   if (currentTierId.value && currentRowId.value && currentIndex.value !== null) {
-    const tier = tiers.value.find(t => t.id === currentTierId.value)
+    const allTiers = [...tiers.value, ...unrankedTiers.value]
+    const tier = allTiers.find(t => t.id === currentTierId.value)
     if (tier) {
       const row = tier.rows.find(r => r.id === currentRowId.value)
       if (row) {
@@ -523,7 +508,7 @@ function handleClearAll() {
     saveTierData(tiers.value)
     
     // 清空备选框
-    candidates.value = []
+
     
     // 重置标题和字体大小
     title.value = 'Tier List'
@@ -844,6 +829,25 @@ async function handleExportImage() {
           candidatesBox.style.padding = '0'
           candidatesBox.style.overflow = 'hidden'
         }
+        
+        // 隐藏底部的无等级列表和分割线
+        // 我们通过查找最后一个 divider 和其后的 tier-list
+        const dividers = clonedDoc.querySelectorAll('.divider')
+        if (dividers.length > 0) {
+          const lastDivider = dividers[dividers.length - 1] as HTMLElement
+          lastDivider.style.display = 'none'
+          
+          // 尝试找到紧跟在 divider 后面的 tier-list
+          let nextEl = lastDivider.nextElementSibling
+          while (nextEl) {
+            if (nextEl.classList.contains('tier-list')) {
+              (nextEl as HTMLElement).style.display = 'none'
+              break
+            }
+            nextEl = nextEl.nextElementSibling
+          }
+        }
+
         
         // 3. 处理 Empty Slots
         const emptySlots = clonedDoc.querySelectorAll('.tier-item.empty')
@@ -1167,7 +1171,26 @@ async function handleExportPDF() {
           candidatesBox.style.height = '0'
           candidatesBox.style.margin = '0'
           candidatesBox.style.padding = '0'
+          candidatesBox.style.padding = '0'
           candidatesBox.style.overflow = 'hidden'
+        }
+        
+        // 隐藏底部的无等级列表和分割线
+        // 我们通过查找最后一个 divider 和其后的 tier-list
+        const dividers = clonedDoc.querySelectorAll('.divider')
+        if (dividers.length > 0) {
+          const lastDivider = dividers[dividers.length - 1] as HTMLElement
+          lastDivider.style.display = 'none'
+          
+          // 尝试找到紧跟在 divider 后面的 tier-list
+          let nextEl = lastDivider.nextElementSibling
+          while (nextEl) {
+            if (nextEl.classList.contains('tier-list')) {
+              (nextEl as HTMLElement).style.display = 'none'
+              break
+            }
+            nextEl = nextEl.nextElementSibling
+          }
         }
         
         // 将所有图片URL替换为CORS代理URL，并等待加载后裁剪
@@ -1682,15 +1705,28 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
       @drag-end="isDragging = false"
     />
 
-    <CandidatesBox
-      :items="candidates"
+    <div class="divider"></div>
+
+    <TierList
+      :tiers="unrankedTiers"
+      :tier-configs="[{ id: 'unranked', label: '', color: 'transparent', order: 9999 }]"
       :is-dragging="isDragging"
+      :is-exporting-image="isExportingImage"
+      :duplicate-item-ids="duplicateItemIds"
       :hide-item-names="hideItemNames"
-      @move-item="handleMoveItemFromCandidates"
-      @reorder="handleReorderCandidates"
+      :hide-tier-labels="true"
+      @add-item="handleAddItem"
+      @add-row="handleAddRow"
+      @delete-row="handleDeleteRow"
+      @delete-item="handleDeleteItem"
+      @edit-item="handleEditItem"
+      @move-item="handleMoveItem"
+      @reorder="handleReorder"
       @drag-start="isDragging = true"
       @drag-end="isDragging = false"
     />
+
+
 
     <SearchModal
       v-if="showSearch"
@@ -1745,6 +1781,14 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
 </template>
 
 <style scoped>
+.divider {
+  height: 4px;
+  background-color: var(--text-color);
+  margin: 0;
+  border-radius: 2px;
+  width: 100%;
+}
+
 .app {
   max-width: 1400px;
   margin: 0 auto;

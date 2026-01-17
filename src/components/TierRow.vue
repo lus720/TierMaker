@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { registerContainer, unregisterContainer, getElementIndex, getContainerId } from '../utils/dragManager'
+import { registerContainer, unregisterContainer, startDrag, cancelDrag } from '../utils/dragManager'
 import { getItemUrl } from '../utils/url'
 import type { TierRow, AnimeItem } from '../types'
+
+// ... (props definition remains same)
+
 
 const props = defineProps<{
   row: TierRow
@@ -31,132 +34,126 @@ const emit = defineEmits<{
 }>()
 
 const rowElement = ref<HTMLElement | null>(null)
+let longPressTimer: ReturnType<typeof setTimeout> | undefined
+const pressingItemId = ref<string | null>(null)
 
 const displayItems = computed(() => {
-  // 始终显示至少一个空位（包括导出图片时，以保持高度统一）
   const items = [...props.row.items]
-  // 始终添加空位，即使在导出图片时也保留（在onclone中会处理）
-  items.push({} as AnimeItem) // 添加空位用于添加新项
+  items.push({} as AnimeItem) 
   return items
 })
 
-// Dragula drop 处理函数
-function handleDrop(el: Element, target: Element, source: Element, sibling: Element | null) {
-  const sourceRowId = source.getAttribute('data-row-id')
-  const targetRowId = target.getAttribute('data-row-id')
-  
-  if (!sourceRowId || !targetRowId) return
-  
-  // 计算新位置索引
-  let newIndex = 0
-  if (sibling) {
-    // 如果有 sibling，找到它的索引
-    const children = Array.from(target.children).filter(c => !c.classList.contains('gu-transit'))
-    newIndex = children.indexOf(sibling)
-    if (newIndex === -1) newIndex = children.length
-  } else {
-    // 如果没有 sibling，放到最后（但要排除空位）
-    const children = Array.from(target.children).filter(c => !c.classList.contains('gu-transit') && !c.classList.contains('empty'))
-    newIndex = children.length
-  }
-  
-  // 获取被拖动元素的原始索引
-  const itemId = el.getAttribute('data-item-id')
-  const oldIndex = props.row.items.findIndex(item => String(item.id) === itemId)
-  
-  // 如果这不是我们的元素被拖走，而是拖进来的
-  if (targetRowId === props.rowId && sourceRowId !== props.rowId) {
-    // 有其他组件会处理，这里不需要做什么
-    // 因为 drop 事件只在目标容器触发一次
-    return
-  }
-  
-  // 如果是从我们这里拖走的
-  if (sourceRowId === props.rowId && targetRowId !== props.rowId) {
-    if (oldIndex >= 0) {
-      const movedItem = props.row.items[oldIndex]
-      emit('move-item', {
-        fromRowId: sourceRowId,
+// 自定义拖拽 drop 处理
+function handleDrop(payload: { item: AnimeItem, fromRowId: string, fromIndex: number }, newIndex: number) {
+  const { item, fromRowId, fromIndex } = payload
+  const targetRowId = props.rowId
+
+  // 跨容器移动
+  if (fromRowId !== targetRowId) {
+     emit('move-item', {
+        fromRowId,
         toRowId: targetRowId,
-        fromIndex: oldIndex,
+        fromIndex,
         toIndex: newIndex,
-        item: movedItem,
-      })
-    }
-    return
+        item
+     })
+     return
   }
+
+  // 同容器重排序
+  const items = [...props.row.items]
   
-  // 如果是同一容器内的重排序
-  if (sourceRowId === props.rowId && targetRowId === props.rowId) {
-    if (oldIndex >= 0 && oldIndex !== newIndex) {
-      const items = [...props.row.items]
-      const targetIndex = Math.min(newIndex, items.length - 1)
-      const [moved] = items.splice(oldIndex, 1)
+  // 校正索引：如果从后面移到前面，index 不变。如果要移到自己后面，index 可能受影响？
+  // newIndex 是基于"排除自己"后的列表的位置。
+  // 例如 [A, B, C], 拖动 A (index 0). 剩余 [B, C].
+  // 放在 C 后面 -> newIndex = 2.
+  // 最终结果 [B, C, A].
+  // array.splice 插入：
+  // items.splice(oldIndex, 1) -> [B, C]
+  // items.splice(newIndex, 0, A) -> [B, C, A]. Correct.
+  
+  if (fromIndex !== newIndex && fromIndex !== -1) {
+      // 这里的 items 必须是纯数据，不包含空位
+      const [moved] = items.splice(fromIndex, 1)
+      // 边界检查
+      let targetIndex = newIndex
+      if (targetIndex > items.length) targetIndex = items.length
+      
       items.splice(targetIndex, 0, moved)
       emit('reorder', items)
-    }
   }
+}
+
+// 指针按下处理
+function handlePointerDown(item: AnimeItem, index: number, event: PointerEvent) {
+  if (!item.id) return // 不拖动空位
   
-  // 确保空位在最后
-  nextTick(() => {
-    ensureEmptySlotLast(target as HTMLElement)
-    if (source !== target) {
-      ensureEmptySlotLast(source as HTMLElement)
-    }
+  // 只有左键
+  if (event.button !== 0) return
+
+  // 忽略按钮点击 (如删除按钮)
+  if ((event.target as HTMLElement).closest('button')) return
+  
+  const target = event.currentTarget as HTMLElement
+  
+
+  
+  // 启动长按定时器
+  pressingItemId.value = item.id
+  longPressTimer = setTimeout(() => {
+    emit('edit-item', item, index, true)
+    
+    // reset state
+    pressingItemId.value = null
+    cancelDrag()
+    longPressTimer = undefined
+  }, 500)
+
+  startDrag(event, target, {
+    item,
+    fromRowId: props.rowId,
+    fromIndex: index
   })
 }
 
 onMounted(() => {
   if (rowElement.value) {
-    // 注册到共享 Dragula 管理器
     registerContainer(props.rowId, rowElement.value, {
       containerId: props.rowId,
       onDrop: handleDrop,
       onDragStart: () => {
+        // 如果开始拖拽（超过阈值），清除长按定时器
+        if (longPressTimer) {
+          clearTimeout(longPressTimer)
+          longPressTimer = undefined
+        }
+        pressingItemId.value = null
         emit('drag-start')
-        // 清除所有项目的长按状态
-        longPressTimers.value.forEach((timer, idx) => {
-          clearTimeout(timer)
-          cancelLongPress(idx)
-        })
-        longPressTimers.value.clear()
-        longPressProgress.value.clear()
-        progressIntervals.value.forEach((interval) => {
-          clearInterval(interval)
-        })
-        progressIntervals.value.clear()
       },
-      onDragEnd: () => {
-        emit('drag-end')
-      }
+      onDragEnd: () => emit('drag-end')
     })
   }
 })
 
 onBeforeUnmount(() => {
-  // 从共享 Dragula 管理器注销
   unregisterContainer(props.rowId)
+  // 如果还有其他清理逻辑
 })
 
-
-// 确保空位在最后
-function ensureEmptySlotLast(container: HTMLElement) {
-  const items = Array.from(container.children) as HTMLElement[]
-  const emptySlots = items.filter(item => item.classList.contains('empty'))
-  const nonEmptyItems = items.filter(item => !item.classList.contains('empty'))
-  
-  // 将所有空位移到最后
-  emptySlots.forEach(emptySlot => {
-    container.appendChild(emptySlot)
-  })
-}
+// ensureEmptySlotLast 不需要了，因为我们通过 displayItems 和 CSS order 控制
+// 或者我们需要保留它以确保 placeholder 不会搞乱顺序？
+// placeholder 是由 dragManager 控制插入 DOM 的。
+// 当 drop 后，DOM 会被 component re-render 覆盖。
+// 所以不需要手动 DOM 操作。
 
 function handleItemClick(index: number) {
-  // 如果刚刚触发了长按编辑，阻止点击事件
-  if (justTriggeredLongPress.value.get(index)) {
-    return
+  // 如果点击发生了（说明没有触发长按），清除定时器
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = undefined
   }
-  
+  pressingItemId.value = null
+
   if (index === props.row.items.length) {
     // 点击空位，添加新项
     emit('add-item', index)
@@ -473,133 +470,7 @@ function handleImageClick(item: AnimeItem, e: MouseEvent) {
   }
 }
 
-// 长按检测
-const longPressTimers = ref<Map<number, ReturnType<typeof setTimeout>>>(new Map())
-const longPressProgress = ref<Map<number, number>>(new Map())
-const progressIntervals = ref<Map<number, ReturnType<typeof setInterval>>>(new Map())
-const justTriggeredLongPress = ref<Map<number, boolean>>(new Map())
-const LONG_PRESS_DURATION = 800 // 长按持续时间（毫秒）
-const PROGRESS_UPDATE_INTERVAL = 16 // 进度更新间隔（约 60fps）
 
-function startLongPress(item: AnimeItem, index: number, _e: MouseEvent | TouchEvent) {
-  if (!item.id || index === props.row.items.length) return
-  
-  // 清除之前的定时器
-  cancelLongPress(index)
-  
-  // 初始化进度
-  longPressProgress.value.set(index, 0)
-  
-  // 开始进度更新
-  const startTime = Date.now()
-  const progressInterval = setInterval(() => {
-    const elapsed = Date.now() - startTime
-    const progress = Math.min((elapsed / LONG_PRESS_DURATION) * 100, 100)
-    longPressProgress.value.set(index, progress)
-    
-    // 如果已经取消，停止更新
-    if (!longPressTimers.value.has(index)) {
-      clearInterval(progressInterval)
-      progressIntervals.value.delete(index)
-      longPressProgress.value.delete(index)
-    }
-  }, PROGRESS_UPDATE_INTERVAL)
-  
-  progressIntervals.value.set(index, progressInterval)
-  
-  // 设置长按定时器
-  const timer = setTimeout(() => {
-    // 清除进度更新
-    const interval = progressIntervals.value.get(index)
-    if (interval) {
-      clearInterval(interval)
-      progressIntervals.value.delete(index)
-    }
-    longPressProgress.value.delete(index)
-    longPressTimers.value.delete(index)
-    
-    // 标记刚刚触发了长按
-    justTriggeredLongPress.value.set(index, true)
-    setTimeout(() => {
-      justTriggeredLongPress.value.delete(index)
-    }, 100) // 100ms 后清除标志
-    
-    // 触发编辑事件，传递长按标志
-    emit('edit-item', item, index, true) // 第三个参数表示是长按触发的
-  }, LONG_PRESS_DURATION)
-  
-  longPressTimers.value.set(index, timer)
-}
-
-function cancelLongPress(index: number) {
-  const timer = longPressTimers.value.get(index)
-  if (timer) {
-    clearTimeout(timer)
-    longPressTimers.value.delete(index)
-  }
-  
-  // 清除进度更新
-  const interval = progressIntervals.value.get(index)
-  if (interval) {
-    clearInterval(interval)
-    progressIntervals.value.delete(index)
-  }
-  
-  // 立即清除进度显示
-  longPressProgress.value.delete(index)
-}
-
-function handleMouseDown(item: AnimeItem, index: number, e: MouseEvent) {
-  // 只处理有内容的项目（排除空位）
-  if (e.button !== 0 || !item.id || index === props.row.items.length) {
-    return
-  }
-  
-  // 立即启动长按检测
-  startLongPress(item, index, e)
-}
-
-function handleMouseUp(index: number, e: MouseEvent) {
-  // 如果刚刚触发了长按，阻止点击事件
-  if (justTriggeredLongPress.value.get(index)) {
-    e.stopPropagation()
-  } else {
-    // 取消长按
-    cancelLongPress(index)
-  }
-}
-
-function handleMouseLeave(index: number) {
-  // 鼠标离开时取消长按
-  cancelLongPress(index)
-}
-
-function handleTouchStart(item: AnimeItem, index: number, e: TouchEvent) {
-  if (item.id && index !== props.row.items.length) {
-    // 立即启动长按检测
-    startLongPress(item, index, e)
-  }
-}
-
-function handleTouchEnd(index: number, e: TouchEvent) {
-  // 如果刚刚触发了长按，阻止点击事件
-  if (justTriggeredLongPress.value.get(index)) {
-    e.preventDefault()
-    e.stopPropagation()
-  } else {
-    // 取消长按
-    cancelLongPress(index)
-  }
-}
-
-function handleTouchCancel(index: number) {
-  // 触摸取消时取消长按
-  cancelLongPress(index)
-}
-
-function getLongPressProgress(index: number): number {
-  return longPressProgress.value.get(index) || 0
-}
 
 // 处理文件拖放
 function processFile(file: File): Promise<AnimeItem | null> {
@@ -718,15 +589,11 @@ async function handleFileDrop(event: DragEvent) {
       :class="{ 
         'empty': !item.id,
         'duplicate': item.id && props.duplicateItemIds?.has(item.id),
-        'hide-name': props.hideItemNames
+        'hide-name': props.hideItemNames,
+        'custom-dragging-source': false /* 可以在这里控制源元素样式 */
       }"
       @click="handleItemClick(index)"
-      @mousedown="handleMouseDown(item, index, $event)"
-      @mouseup="handleMouseUp(index, $event)"
-      @mouseleave="handleMouseLeave(index)"
-      @touchstart="handleTouchStart(item, index, $event)"
-      @touchend="handleTouchEnd(index, $event)"
-      @touchcancel="handleTouchCancel(index)"
+      @pointerdown="handlePointerDown(item, index, $event)"
     >
       <div 
         v-if="item.image" 
@@ -750,27 +617,8 @@ async function handleFileDrop(event: DragEvent) {
       <div v-else class="item-placeholder">
         <span class="placeholder-text">+</span>
       </div>
-      <div v-if="item.name && !props.hideItemNames" class="item-name">{{ item.name_cn || item.name }}</div>
-      <!-- 长按加载条 -->
-      <div
-        v-if="item.id && getLongPressProgress(index) > 0 && !props.isDragging"
-        class="long-press-loader"
-      >
-        <svg class="progress-ring" viewBox="0 0 100 100">
-          <circle
-            class="progress-ring-circle"
-            cx="50"
-            cy="50"
-            r="45"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="5"
-            :stroke-dasharray="`${2 * Math.PI * 45}`"
-            :stroke-dashoffset="`${2 * Math.PI * 45 * (1 - getLongPressProgress(index) / 100)}`"
-            transform="rotate(-90 50 50)"
-          />
-        </svg>
-      </div>
+      <div v-if="item.name && !props.hideItemNames" class="item-name">{{ item.name }}</div>
+
       <button
         v-if="item.id"
         class="delete-btn"
@@ -779,6 +627,24 @@ async function handleFileDrop(event: DragEvent) {
       >
         ×
       </button>
+      
+      <!-- 长按加载条 (圆形) -->
+      <div 
+        v-if="pressingItemId === item.id" 
+        class="long-press-indicator-circle"
+      >
+        <svg viewBox="0 0 40 40" class="progress-ring">
+          <circle
+            class="progress-ring-circle"
+            stroke="white"
+            stroke-width="4"
+            fill="transparent"
+            r="16"
+            cx="20"
+            cy="20"
+          />
+        </svg>
+      </div>
     </div>
   </div>
 </template>
@@ -804,6 +670,47 @@ async function handleFileDrop(event: DragEvent) {
   cursor: pointer;
   transition: all 0.2s;
   overflow: hidden;
+}
+
+.long-press-indicator-circle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 100;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.6); /* Darker overlay */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.progress-ring {
+  display: block;
+  width: 50px;
+  height: 50px;
+}
+
+.progress-ring-circle {
+  stroke-dasharray: 100.5; /* 2 * PI * 16 ≈ 100.5 */
+  stroke-dashoffset: 100.5;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  animation: progressRing 0.5s linear forwards;
+}
+
+@keyframes progressRing {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* 拖拽过程中禁用动画，防止计算抖动 */
+.tier-row.no-transition .tier-item {
+  transition: none !important;
 }
 
 /* 角色条目：保持与普通条目相同的尺寸 */

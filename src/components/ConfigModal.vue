@@ -442,8 +442,9 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 .modal-content {
   background: var(--bg-color);
   border: 2px solid var(--border-color);
+  max-width: 700px;
   width: 90%;
-  max-width: 600px;
+  height: 80vh;
   max-height: 80vh;
   display: flex;
   flex-direction: column;

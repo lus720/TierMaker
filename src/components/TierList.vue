@@ -10,6 +10,7 @@ const props = defineProps<{
   isExportingImage?: boolean
   duplicateItemIds?: Set<string | number>
   hideItemNames?: boolean
+  hideTierLabels?: boolean
 }>()
 
 // 暴露方法给父组件调用
@@ -132,6 +133,7 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
         class="tier-row-wrapper"
       >
         <div
+          v-if="!props.hideTierLabels"
           class="tier-label"
           :style="{ 
             backgroundColor: getTierConfig(tier.id)?.color || '#000000',

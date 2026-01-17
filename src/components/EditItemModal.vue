@@ -14,7 +14,6 @@ const emit = defineEmits<{
 }>()
 
 const name = ref('')
-const nameCn = ref('')
 const imageUrl = ref('')
 const customUrl = ref('')
 const imageFile = ref<File | null>(null)
@@ -54,7 +53,6 @@ const imagePositionInfo = ref<{
 watch(() => props.item, (newItem) => {
   if (newItem) {
     name.value = newItem.name || ''
-    nameCn.value = newItem.name_cn || ''
     imageUrl.value = newItem.image || ''
     customUrl.value = newItem.url || ''
     imageFile.value = null
@@ -459,7 +457,7 @@ function handleSave() {
   const updatedItem: AnimeItem = {
     ...props.item,
     name: name.value.trim() || props.item.name,
-    name_cn: nameCn.value.trim() || undefined,
+    // name_cn: undefined, // 不再保存单独的 name_cn
     image: finalImageUrl,
     url: finalUrl,
     originalUrl: originalUrl,
@@ -720,22 +718,11 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
       <div class="modal-body">
         <!-- 作品名称 -->
         <div class="form-group">
-          <label>作品名称（日文/英文）</label>
+          <label>作品名称</label>
           <input
             v-model="name"
             type="text"
             placeholder="输入作品名称"
-            class="form-input"
-          />
-        </div>
-        
-        <!-- 中文名称 -->
-        <div class="form-group">
-          <label>中文名称（可选）</label>
-          <input
-            v-model="nameCn"
-            type="text"
-            placeholder="输入中文名称"
             class="form-input"
           />
         </div>
@@ -850,11 +837,13 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
 .modal-content {
   background: var(--bg-color);
   border: 2px solid var(--border-color);
-  max-width: 600px;
+  max-width: 700px;
   width: 90%;
-  max-height: 90vh;
+  height: 80vh;
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
@@ -876,9 +865,9 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
 .close-btn {
   width: 30px;
   height: 30px;
-  border: 2px solid #000000;
-  background: #ffffff;
-  color: #000000;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-size: 24px;
   font-weight: bold;
   cursor: pointer;
@@ -890,8 +879,8 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
 }
 
 .close-btn:hover {
-  background: #000000;
-  color: #ffffff;
+  background: var(--border-color);
+  color: var(--bg-color);
 }
 
 .modal-body {
