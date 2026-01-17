@@ -35,7 +35,7 @@ const emit = defineEmits<{
 
 const rowElement = ref<HTMLElement | null>(null)
 let longPressTimer: ReturnType<typeof setTimeout> | undefined
-const pressingItemId = ref<string | null>(null)
+const pressingItemId = ref<string | number | null>(null)
 
 const displayItems = computed(() => {
   const items = [...props.row.items]
