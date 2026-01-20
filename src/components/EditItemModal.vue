@@ -64,13 +64,7 @@ watch(() => props.item, (newItem) => {
       updatePreviewCrop()
       // 检查遮罩框元素是否存在
       if (maskElementRef.value) {
-        console.log('✅ 遮罩框元素已挂载', maskElementRef.value)
-        // 测试事件绑定
-        maskElementRef.value.addEventListener('click', () => {
-          console.log('✅ 遮罩框点击事件触发')
-        })
-      } else {
-        console.warn('❌ 遮罩框元素未找到')
+        // 遮罩框已挂载
       }
     })
   }
@@ -447,12 +441,6 @@ function handleSave() {
   
   const finalCropPosition = cropPosition.value === 'auto' ? undefined : cropPosition.value
   
-  console.log('💾 保存item:', {
-    itemId: props.item?.id,
-    cropPosition: finalCropPosition,
-    cropPositionType: typeof finalCropPosition,
-    isObject: typeof finalCropPosition === 'object' && finalCropPosition !== null
-  })
   
   const updatedItem: AnimeItem = {
     ...props.item,
@@ -508,21 +496,14 @@ function handleMouseUp(event: MouseEvent) {
 
 // 拖动遮罩框相关函数
 function handleMaskMouseDown(event: MouseEvent) {
-  console.log('handleMaskMouseDown 被调用', {
-    hasImagePositionInfo: !!imagePositionInfo.value,
-    hasMaskElement: !!maskElementRef.value,
-    eventTarget: event.target
-  })
   
   if (!imagePositionInfo.value || !maskElementRef.value) {
-    console.warn('拖动失败：缺少必要信息')
     return
   }
   
   event.preventDefault()
   event.stopPropagation()
   
-  console.log('开始拖动遮罩框')
   isDraggingMask.value = true
   dragStartX.value = event.clientX
   dragStartY.value = event.clientY
@@ -626,19 +607,6 @@ function updateCropPositionFromMask(maskLeft: number, maskTop: number) {
   const sourceX = highlightLeft / scale
   const sourceY = highlightTop / scale
   
-  console.log('🔍 坐标转换:', {
-    maskLeft,
-    maskTop,
-    imageLeft,
-    imageTop,
-    highlightLeft,
-    highlightTop,
-    scale,
-    sourceX,
-    sourceY,
-    naturalWidth,
-    naturalHeight
-  })
   
   // 计算目标尺寸
   const containerWidth = 100
@@ -669,10 +637,6 @@ function updateCropPositionFromMask(maskLeft: number, maskTop: number) {
   
   cropPosition.value = customCropPosition
   
-  console.log('✅ 更新裁剪位置:', {
-    itemId: props.item?.id,
-    cropPosition: customCropPosition
-  })
 }
 
 // 根据遮罩框位置更新遮罩层

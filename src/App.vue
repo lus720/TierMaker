@@ -8,6 +8,7 @@ import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
 
 import { getItemUrl } from './utils/url'
+import { processExportImages, processEmptySlots, configureExportStyles, hideExportUIElements, syncThemeToClonedDoc } from './utils/exportUtils'
 import type { Tier, AnimeItem, TierConfig, CropPosition } from './types'
 import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, clearItemsAndTitle, resetSettings, loadThemePreference, loadHideItemNames, loadExportScale, DEFAULT_TIER_CONFIGS, type ExportData } from './utils/storage'
 
@@ -165,7 +166,6 @@ onMounted(() => {
   // 注意：unrankedTiers 目前是硬编码初始值，如果后续持久化了也需要迁移
   
   if (hasChanges) {
-    console.log('🔄 已迁移旧数据到单名字格式')
     saveTierData(tiers.value)
   }
   
@@ -370,13 +370,6 @@ function handleEditItem(tierId: string, rowId: string, item: AnimeItem, index: n
 }
 
 function handleSaveEditItem(updatedItem: AnimeItem) {
-  console.log('💾 handleSaveEditItem 被调用:', {
-    itemId: updatedItem.id,
-    cropPosition: updatedItem.cropPosition,
-    cropPositionType: typeof updatedItem.cropPosition,
-    isObject: typeof updatedItem.cropPosition === 'object' && updatedItem.cropPosition !== null
-  })
-  
   if (currentTierId.value && currentRowId.value && currentIndex.value !== null) {
     const allTiers = [...tiers.value, ...unrankedTiers.value]
     const tier = allTiers.find(t => t.id === currentTierId.value)
@@ -384,10 +377,6 @@ function handleSaveEditItem(updatedItem: AnimeItem) {
       const row = tier.rows.find(r => r.id === currentRowId.value)
       if (row) {
         row.items[currentIndex.value] = updatedItem
-        console.log('✅ 保存到tiers:', {
-          itemId: updatedItem.id,
-          savedCropPosition: row.items[currentIndex.value].cropPosition
-        })
         saveTierData(tiers.value)
       }
     }
@@ -808,224 +797,34 @@ async function handleExportImage() {
       
       onclone: async (clonedDoc) => {
         // 1. 同步主题
-        const currentTheme = document.documentElement.getAttribute('data-theme') || 'auto'
-        clonedDoc.documentElement.setAttribute('data-theme', currentTheme)
+        syncThemeToClonedDoc(clonedDoc)
         
-        // 2. 隐藏无关 UI (按钮等)
-        const buttons = clonedDoc.querySelectorAll('button, .btn, .header-actions')
-        buttons.forEach((el) => (el as HTMLElement).style.display = 'none')
-        const headerLeft = clonedDoc.querySelector('.header-left') as HTMLElement
-        if (headerLeft) {
-          headerLeft.style.display = 'none'
-        }
-        
-        // 隐藏备选框（保存时不应包含备选作品）
-        const candidatesBox = clonedDoc.querySelector('.candidates-box') as HTMLElement
-        if (candidatesBox) {
-          candidatesBox.style.display = 'none'
-          candidatesBox.style.visibility = 'hidden'
-          candidatesBox.style.height = '0'
-          candidatesBox.style.margin = '0'
-          candidatesBox.style.padding = '0'
-          candidatesBox.style.overflow = 'hidden'
-        }
-        
-        // 隐藏底部的无等级列表和分割线
-        // 我们通过查找最后一个 divider 和其后的 tier-list
-        const dividers = clonedDoc.querySelectorAll('.divider')
-        if (dividers.length > 0) {
-          const lastDivider = dividers[dividers.length - 1] as HTMLElement
-          lastDivider.style.display = 'none'
-          
-          // 尝试找到紧跟在 divider 后面的 tier-list
-          let nextEl = lastDivider.nextElementSibling
-          while (nextEl) {
-            if (nextEl.classList.contains('tier-list')) {
-              (nextEl as HTMLElement).style.display = 'none'
-              break
-            }
-            nextEl = nextEl.nextElementSibling
-          }
-        }
-
+        // 2. 隐藏无关 UI
+        hideExportUIElements(clonedDoc, { hideCandidates: true, hideUnranked: true })
         
         // 3. 处理 Empty Slots
-        const emptySlots = clonedDoc.querySelectorAll('.tier-item.empty')
-        emptySlots.forEach((slot) => {
-          const el = slot as HTMLElement
-          const parent = el.parentElement
-          const hasItems = parent && Array.from(parent.children).some(c => !c.classList.contains('empty'))
-          
-          if (hasItems) {
-            el.style.display = 'none'
-          } else {
-            el.style.opacity = '0'
-            el.style.border = 'none'
-            const content = el.querySelectorAll('.item-placeholder, .placeholder-text')
-            content.forEach(c => (c as HTMLElement).style.display = 'none')
-          }
-        })
+        processEmptySlots(clonedDoc)
         
-        // 4. 【关键步骤】将所有图片URL替换为CORS代理URL，并等待加载后裁剪
-        const allImages = clonedDoc.querySelectorAll('img') as NodeListOf<HTMLImageElement>
-        const imageProcessPromises: Promise<void>[] = []
+        // 4. 处理图片 (CORS 代理 + 裁剪)
+        await processExportImages(clonedDoc, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'image')
         
-        allImages.forEach((img) => {
-          const processPromise = new Promise<void>(async (resolve) => {
-            const itemId = img.getAttribute('data-item-id')
-            const currentSrc = img.src
-            const dataOriginalSrc = img.getAttribute('data-original-src')
-            
-            // ✅ 关键修复：如果 currentSrc 已经是 data URL（主页面已裁剪），直接使用
-            if (currentSrc.startsWith('data:')) {
-              console.log('✅ 导出图片时使用主页面已裁剪的 data URL:', { itemId })
-              img.src = currentSrc
-              img.style.width = '100px'
-              img.style.height = '133px'
-              img.style.objectFit = 'none'
-              resolve()
-              return
-            }
-            
-            const originalSrc = dataOriginalSrc || currentSrc
-            const isVndb = originalSrc?.includes('vndb') || itemId?.startsWith('v')
-            
-            console.log('🖼️ 导出图片时处理:', {
-              itemId,
-              originalSrc,
-              currentSrc,
-              hasDataOriginalSrc: !!dataOriginalSrc,
-              isVndb,
-              isDataUrl: originalSrc?.startsWith('data:'),
-              isAlreadyProxy: originalSrc?.includes('wsrv.nl')
-            })
-            
-            // 替换为CORS代理URL
-            if (originalSrc && !originalSrc.startsWith('data:') && !originalSrc.includes('wsrv.nl')) {
-              const proxyUrl = getCorsProxyUrl(originalSrc)
-              const isVndbImage = originalSrc.includes('vndb.org')
-              
-              console.log('🔗 导出图片时使用 CORS 代理:', {
-                original: originalSrc,
-                proxy: proxyUrl,
-                itemId,
-                isVndbImage,
-                isDirectUrl: proxyUrl === originalSrc
-              })
-              
-              img.src = proxyUrl
-              // VNDB 图片直接使用原图，不设置 crossOrigin（让 html2canvas 处理）
-              // 其他图片使用代理，设置 crossOrigin
-              if (!isVndbImage || proxyUrl !== originalSrc) {
-                img.crossOrigin = 'anonymous'
-              }
-            } else if (originalSrc?.includes('wsrv.nl')) {
-              img.crossOrigin = 'anonymous'
-              console.log('✅ 图片已经是代理 URL，设置 crossOrigin:', { originalSrc, itemId })
-            } else {
-              console.warn('⚠️ 导出图片时 URL 异常:', { originalSrc, currentSrc: img.src, itemId })
-            }
-            
-            // 等待图片加载完成
-            const waitForLoad = () => {
-              if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
-                console.log('✅ 导出图片时加载完成，开始裁剪:', {
-                  itemId,
-                  naturalWidth: img.naturalWidth,
-                  naturalHeight: img.naturalHeight,
-                  currentSrc: img.src
-                })
-                // 图片已加载，进行裁剪（传入导出缩放比例）
-                cropImageWithCanvas(img, currentScale).then((croppedBase64) => {
-                  if (croppedBase64) {
-                    console.log('✅ 导出图片时裁剪成功:', { itemId, dataUrlLength: croppedBase64.length })
-                    img.src = croppedBase64
-                    img.style.width = '100px'
-                    img.style.height = '133px'
-                    img.style.objectFit = 'none' // 不再需要object-fit
-                  } else {
-                    console.warn('⚠️ 导出图片时裁剪失败，使用 CSS 方式:', { itemId })
-                    // 如果裁剪失败，使用CSS方式
-                    applySmartCropToImage(img)
-                  }
-                  resolve()
-                }).catch((error) => {
-                  console.error('❌ 导出图片时裁剪出错:', { itemId, error })
-                  applySmartCropToImage(img)
-                  resolve()
-                })
-              } else {
-                // 图片未加载完成，等待加载
-                img.onload = waitForLoad
-                img.onerror = () => {
-                  console.error('❌ 导出图片时加载失败:', { itemId, src: img.src, originalSrc })
-                  resolve()
-                }
-              }
-            }
-            
-            waitForLoad()
-          })
-          
-          imageProcessPromises.push(processPromise)
-        })
-        
-        // 等待所有图片处理完成
-        await Promise.allSettled(imageProcessPromises)
-        
-        // 5. 确保 Header 样式正确
-        const header = clonedDoc.querySelector('.header') as HTMLElement
-        if (header) {
-          let titleFontSize = 32
-          try {
-            const originalTitle = document.querySelector('.title') as HTMLElement
-            if (originalTitle) {
-              const computedStyle = window.getComputedStyle(originalTitle)
-              const fontSizeStr = computedStyle.fontSize
-              const parsedSize = parseFloat(fontSizeStr)
-              if (!isNaN(parsedSize) && parsedSize > 0) {
-                titleFontSize = parsedSize
-              }
-            }
-          } catch (e) {
-            console.warn('获取标题字体大小失败，使用默认值32px:', e)
-          }
-          header.style.paddingBottom = `${titleFontSize / 2}px`
-          header.style.marginBottom = '0'
-        }
-        
-        // 6. 确保标题正常显示
-        const clonedTitle = clonedDoc.querySelector('.title') as HTMLElement
-        if (clonedTitle) {
-          clonedTitle.style.display = 'block'
-          clonedTitle.style.visibility = 'visible'
-          clonedTitle.style.position = 'relative'
-          clonedTitle.style.left = 'auto'
-          clonedTitle.style.transform = 'none'
-          clonedTitle.style.textAlign = 'center'
-          clonedTitle.style.width = '100%'
-          clonedTitle.style.margin = '0'
-          clonedTitle.style.padding = '0'
-          clonedTitle.style.lineHeight = '1'
-        }
-        
-        // 7. 设置 tier-list 的顶部间距
-        const clonedTierList = clonedDoc.querySelector('.tier-list') as HTMLElement
-        if (clonedTierList) {
-          clonedTierList.style.marginTop = '0'
-          clonedTierList.style.paddingTop = '0'
-        }
-        
-        // 8. Tight 模式：移除所有留白
+        // 5. 配置导出样式
         const originalApp = appContentRef.value as HTMLElement
         const originalAppWidth = originalApp.offsetWidth || originalApp.scrollWidth
-        const clonedApp = clonedDoc.querySelector('.app') as HTMLElement
-        if (clonedApp) {
-          clonedApp.style.padding = '0'
-          clonedApp.style.margin = '0'
-          clonedApp.style.width = `${originalAppWidth}px`
-          clonedApp.style.maxWidth = `${originalAppWidth}px`
+        let computedTitleFontSize = 32
+        try {
+          const originalTitle = document.querySelector('.title') as HTMLElement
+          if (originalTitle) {
+            const computedStyle = window.getComputedStyle(originalTitle)
+            const parsedSize = parseFloat(computedStyle.fontSize)
+            if (!isNaN(parsedSize) && parsedSize > 0) {
+              computedTitleFontSize = parsedSize
+            }
+          }
+        } catch (e) {
+          console.warn('获取标题字体大小失败，使用默认值32px:', e)
         }
+        configureExportStyles(clonedDoc, { titleFontSize: computedTitleFontSize, originalAppWidth })
       }
     })
     
@@ -1148,202 +947,22 @@ async function handleExportPDF() {
       backgroundColor: getCurrentThemeBackgroundColor(),
       imageTimeout: 15000,
       onclone: async (clonedDoc) => {
-        // 同步主题
-        const currentTheme = document.documentElement.getAttribute('data-theme') || 'auto'
-        clonedDoc.documentElement.setAttribute('data-theme', currentTheme)
+        // 1. 同步主题
+        syncThemeToClonedDoc(clonedDoc)
         
-        // 隐藏 UI
-        clonedDoc.querySelectorAll('button, .btn, .header-actions').forEach((el: any) => el.style.display = 'none')
-        const headerLeft = clonedDoc.querySelector('.header-left') as HTMLElement
-        if (headerLeft) {
-          headerLeft.style.display = 'none'
-        }
-        const modals = clonedDoc.querySelectorAll('.modal-overlay, [class*="modal"]')
-        modals.forEach((modal) => {
-          (modal as HTMLElement).style.display = 'none'
-        })
+        // 2. 隐藏无关 UI
+        hideExportUIElements(clonedDoc, { hideCandidates: true, hideUnranked: true })
         
-        // 隐藏备选框（保存时不应包含备选作品）
-        const candidatesBox = clonedDoc.querySelector('.candidates-box') as HTMLElement
-        if (candidatesBox) {
-          candidatesBox.style.display = 'none'
-          candidatesBox.style.visibility = 'hidden'
-          candidatesBox.style.height = '0'
-          candidatesBox.style.margin = '0'
-          candidatesBox.style.padding = '0'
-          candidatesBox.style.padding = '0'
-          candidatesBox.style.overflow = 'hidden'
-        }
+        // 3. 处理图片 (CORS 代理 + 裁剪)
+        await processExportImages(clonedDoc, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'pdf')
         
-        // 隐藏底部的无等级列表和分割线
-        // 我们通过查找最后一个 divider 和其后的 tier-list
-        const dividers = clonedDoc.querySelectorAll('.divider')
-        if (dividers.length > 0) {
-          const lastDivider = dividers[dividers.length - 1] as HTMLElement
-          lastDivider.style.display = 'none'
-          
-          // 尝试找到紧跟在 divider 后面的 tier-list
-          let nextEl = lastDivider.nextElementSibling
-          while (nextEl) {
-            if (nextEl.classList.contains('tier-list')) {
-              (nextEl as HTMLElement).style.display = 'none'
-              break
-            }
-            nextEl = nextEl.nextElementSibling
-          }
-        }
+        // 4. 处理 Empty Slots
+        processEmptySlots(clonedDoc)
         
-        // 将所有图片URL替换为CORS代理URL，并等待加载后裁剪
-        const allImages = clonedDoc.querySelectorAll('img') as NodeListOf<HTMLImageElement>
-        const imageProcessPromises: Promise<void>[] = []
-        
-        allImages.forEach((img) => {
-          const processPromise = new Promise<void>(async (resolve) => {
-            const itemId = img.getAttribute('data-item-id')
-            const currentSrc = img.src
-            const dataOriginalSrc = img.getAttribute('data-original-src')
-            
-            // ✅ 关键修复：如果 currentSrc 已经是 data URL（主页面已裁剪），直接使用
-            if (currentSrc.startsWith('data:')) {
-              console.log('✅ 导出 PDF 时使用主页面已裁剪的 data URL:', { itemId })
-              img.src = currentSrc
-              img.style.width = '100px'
-              img.style.height = '133px'
-              img.style.objectFit = 'none'
-              resolve()
-              return
-            }
-            
-            const originalSrc = dataOriginalSrc || currentSrc
-            
-            console.log('🖼️ 导出 PDF 时处理:', {
-              itemId,
-              originalSrc,
-              currentSrc,
-              hasDataOriginalSrc: !!dataOriginalSrc,
-              isVndb: originalSrc?.includes('vndb') || itemId?.startsWith('v'),
-              isDataUrl: originalSrc?.startsWith('data:'),
-              isAlreadyProxy: originalSrc?.includes('wsrv.nl')
-            })
-            
-            // 替换为CORS代理URL
-            if (originalSrc && !originalSrc.startsWith('data:') && !originalSrc.includes('wsrv.nl')) {
-              const proxyUrl = getCorsProxyUrl(originalSrc)
-              const isVndbImage = originalSrc.includes('vndb.org')
-              
-              console.log('🔗 导出 PDF 时使用 CORS 代理:', {
-                original: originalSrc,
-                proxy: proxyUrl,
-                itemId,
-                isVndbImage,
-                isDirectUrl: proxyUrl === originalSrc
-              })
-              
-              img.src = proxyUrl
-              // VNDB 图片直接使用原图，不设置 crossOrigin（让 html2canvas 处理）
-              // 其他图片使用代理，设置 crossOrigin
-              if (!isVndbImage || proxyUrl !== originalSrc) {
-                img.crossOrigin = 'anonymous'
-              }
-            } else if (originalSrc?.includes('wsrv.nl')) {
-              img.crossOrigin = 'anonymous'
-              console.log('✅ 图片已经是代理 URL，设置 crossOrigin:', { originalSrc, itemId })
-            } else {
-              console.warn('⚠️ 导出 PDF 时 URL 异常:', { originalSrc, currentSrc: img.src, itemId })
-            }
-            
-            // 等待图片加载完成
-            const waitForLoad = () => {
-              if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
-                console.log('✅ 导出 PDF 时加载完成，开始裁剪:', {
-                  itemId,
-                  naturalWidth: img.naturalWidth,
-                  naturalHeight: img.naturalHeight,
-                  currentSrc: img.src
-                })
-                // 图片已加载，进行裁剪（传入导出缩放比例）
-                cropImageWithCanvas(img, currentScale).then((croppedBase64) => {
-                  if (croppedBase64) {
-                    console.log('✅ 导出 PDF 时裁剪成功:', { itemId, dataUrlLength: croppedBase64.length })
-                    img.src = croppedBase64
-                    img.style.width = '100px'
-                    img.style.height = '133px'
-                    img.style.objectFit = 'none' // 不再需要object-fit
-                  } else {
-                    console.warn('⚠️ 导出 PDF 时裁剪失败，使用 CSS 方式:', { itemId })
-                    // 如果裁剪失败，使用CSS方式
-                    applySmartCropToImage(img)
-                  }
-                  resolve()
-                }).catch((error) => {
-                  console.error('❌ 导出 PDF 时裁剪出错:', { itemId, error })
-                  applySmartCropToImage(img)
-                  resolve()
-                })
-              } else {
-                // 图片未加载完成，等待加载
-                img.onload = waitForLoad
-                img.onerror = () => {
-                  console.error('❌ 导出 PDF 时加载失败:', { itemId, src: img.src, originalSrc })
-                  resolve()
-                }
-              }
-            }
-            
-            waitForLoad()
-          })
-          
-          imageProcessPromises.push(processPromise)
-        })
-        
-        // 等待所有图片处理完成
-        await Promise.allSettled(imageProcessPromises)
-        
-        // 处理 Empty Slots
-        const emptySlots = clonedDoc.querySelectorAll('.tier-item.empty')
-        emptySlots.forEach((slot) => {
-          const el = slot as HTMLElement
-          const parent = el.parentElement
-          const hasItems = parent && Array.from(parent.children).some(c => !c.classList.contains('empty'))
-          
-          if (hasItems) {
-            el.style.display = 'none'
-          } else {
-            el.style.opacity = '0'
-            el.style.border = 'none'
-            const content = el.querySelectorAll('.item-placeholder, .placeholder-text')
-            content.forEach(c => (c as HTMLElement).style.display = 'none')
-          }
-        })
-        
-        // 确保 Header 样式正确
-        const header = clonedDoc.querySelector('.header') as HTMLElement
-        if (header) {
-          header.style.paddingBottom = `${titleFontSize.value / 2}px`
-          header.style.marginBottom = '0'
-        }
-        
-        // 确保标题正常显示
-        const clonedTitle = clonedDoc.querySelector('.title') as HTMLElement
-        if (clonedTitle) {
-          clonedTitle.style.display = 'block'
-          clonedTitle.style.visibility = 'visible'
-          clonedTitle.style.position = 'relative'
-          clonedTitle.style.left = 'auto'
-          clonedTitle.style.transform = 'none'
-          clonedTitle.style.textAlign = 'center'
-          clonedTitle.style.width = '100%'
-          clonedTitle.style.margin = '0'
-          clonedTitle.style.padding = '0'
-          clonedTitle.style.lineHeight = '1'
-        }
-        
-        // 设置 tier-list 的顶部间距
-        const clonedTierList = clonedDoc.querySelector('.tier-list') as HTMLElement
-        if (clonedTierList) {
-          clonedTierList.style.marginTop = '0'
-          clonedTierList.style.paddingTop = '0'
-        }
+        // 5. 配置导出样式
+        const originalApp = appContentRef.value as HTMLElement
+        const originalAppWidth = originalApp.offsetWidth || originalApp.scrollWidth
+        configureExportStyles(clonedDoc, { titleFontSize: titleFontSize.value, originalAppWidth })
       }
     })
     
@@ -1412,10 +1031,7 @@ function getCorsProxyUrl(url: string): string {
   // VNDB 图片可能不支持 wsrv.nl 代理，尝试直接使用原图（如果支持 CORS）
   // 或者使用其他代理服务
   if (url.includes('vndb.org') || url.includes('t.vndb.org')) {
-    // 尝试直接使用原图（VNDB 可能支持 CORS）
-    // 如果不行，可以尝试其他代理服务，如 images.weserv.nl 或其他
-    console.log('🔍 VNDB 图片，尝试直接使用原图:', url)
-    return url // 先尝试直接使用，如果失败会在加载时处理
+    return url // 尝试直接使用，如果失败会在加载时处理
   }
   
   // 关键优化：移除 t=... 时间戳，允许浏览器缓存图片
@@ -1491,12 +1107,6 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
         const item = row.items.find(i => String(i.id) === String(itemId))
         if (item && item.cropPosition) {
           cropPosition = item.cropPosition
-          console.log('🎨 导出时找到裁剪位置:', {
-            itemId,
-            itemName: item.name,
-            cropPosition,
-            isCustomPosition: typeof cropPosition === 'object' && cropPosition !== null && 'sourceX' in cropPosition
-          })
           break
         }
       }

@@ -172,16 +172,6 @@ function handleImageLoad(event: Event) {
   const item = itemId ? props.row.items.find(i => String(i.id) === String(itemId)) : null
   const cropPosition = item?.cropPosition || 'auto'
   
-  console.log('🖼️ handleImageLoad 被调用:', {
-    itemId,
-    itemName: item?.name,
-    cropPosition,
-    isCustomPosition: typeof cropPosition === 'object' && cropPosition !== null && 'sourceX' in cropPosition,
-    imgSrc: img.src,
-    naturalWidth: img.naturalWidth,
-    naturalHeight: img.naturalHeight,
-    allItemIds: props.row.items.map(i => String(i.id))
-  })
   
   // 统一处理所有图片，使用相同的裁剪规则
   // 目标宽高比 target = 0.75 (3:4)，容器尺寸 100px × 133px
@@ -192,28 +182,18 @@ function handleImageLoad(event: Event) {
   
   // ✅ 如果已经是裁剪后的 dataURL，就不要再裁一次（避免二次 load 循环）
   if (img.dataset.cropped === '1') {
-    console.log('✅ 图片已裁剪，跳过处理')
     return
   }
   
   // ✅ 如果裁剪位置是自定义坐标对象，使用 canvas 裁剪
   if (typeof cropPosition === 'object' && cropPosition !== null && 'sourceX' in cropPosition) {
-    console.log('✅ 检测到自定义坐标，开始裁剪:', {
-      itemId,
-      cropPosition,
-      currentSrc: img.src
-    })
-    
     // ✅ 永远用原始 src 来裁剪（不要用 img.src，因为 img.src 会被改成 dataURL）
     const originalSrc = img.getAttribute('data-original-src') || img.currentSrc || img.src
-    
-    console.log('✅ 使用原始图片地址裁剪:', originalSrc)
     
     // 使用 canvas 裁剪图片（需要重新加载图片以设置 crossOrigin）
     cropImageWithCanvasForDisplay(originalSrc, cropPosition).then((dataUrl) => {
       if (!dataUrl) return
       
-      console.log('✅ 裁剪成功，更新图片 src')
       img.dataset.cropped = '1' // ✅ 打标记，防止二次裁剪
       img.src = dataUrl // ✅ 替换为裁剪后的图
       // 确保图片尺寸正确
@@ -350,29 +330,15 @@ async function cropImageWithCanvasForDisplay(
   const containerWidth = 100
   const containerHeight = 133
   
-  console.log('🎨 开始裁剪图片:', {
-    imageSrc,
-    cropPosition: { sourceX, sourceY, sourceWidth, sourceHeight },
-    targetSize: { containerWidth, containerHeight }
-  })
   
   return new Promise((resolve, reject) => {
     // 创建新的 Image 对象，设置 crossOrigin 以避免 CORS 问题
     const img = new Image()
     img.crossOrigin = 'anonymous'
     
-    // ✅ 使用 CORS 代理 URL 来解决跨域问题
     const proxyUrl = getCorsProxyUrl(imageSrc)
-    console.log('🔗 使用 CORS 代理:', { original: imageSrc, proxy: proxyUrl })
     
     img.onload = () => {
-      console.log('✅ 图片加载成功，开始裁剪:', {
-        naturalWidth: img.naturalWidth,
-        naturalHeight: img.naturalHeight,
-        cropArea: { sourceX, sourceY, sourceWidth, sourceHeight },
-        proxyUrl,
-        originalUrl: imageSrc
-      })
       
       try {
         const canvas = document.createElement('canvas')
@@ -394,9 +360,7 @@ async function cropImageWithCanvasForDisplay(
           0, 0, containerWidth, containerHeight
         )
         
-        // 返回裁剪后的base64
         const dataUrl = canvas.toDataURL('image/png', 1.0)
-        console.log('✅ 裁剪完成，生成 data URL，长度:', dataUrl.length)
         resolve(dataUrl)
       } catch (error) {
         console.error('❌ 裁剪过程中出错:', error)

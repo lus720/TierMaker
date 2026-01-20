@@ -66,7 +66,6 @@ async function handleSearch() {
     
     if (apiSource.value === 'bangumi') {
       data = await searchBangumiAnime(keyword.value, 0, 20)
-      console.log('Bangumi 搜索结果数量:', data.length, data)
       if (data.length < 20) {
         hasMore.value = false
       }
@@ -78,7 +77,6 @@ async function handleSearch() {
     }
     
     results.value = data
-    console.log('设置的 results 数量:', results.value.length)
   } catch (e: any) {
     console.error('搜索错误:', e)
     error.value = e.message || '搜索失败'
@@ -170,8 +168,6 @@ async function handleImportCharacters(subjectId: number, event: Event) {
       return
     }
     
-    // 将角色转换为 AnimeItem 数组
-    console.log(`开始导入 ${characters.length} 个角色`)
     const animeItems: AnimeItem[] = []
     
     for (const character of characters) {
@@ -187,12 +183,6 @@ async function handleImportCharacters(subjectId: number, event: Event) {
       
       // 使用 character.name，因为API返回的数据中只有 name 字段
       const characterName = character.name || '未知角色'
-      
-      console.log(`准备导入角色 ${itemId}:`, {
-        name: characterName,
-        imageUrl: finalImageUrl,
-        hasImage: !!finalImageUrl
-      })
       
       // 优先使用中文名
       const finalName = character.nameCn || character.name_cn || characterName
@@ -211,12 +201,9 @@ async function handleImportCharacters(subjectId: number, event: Event) {
     
     // 批量导入所有角色
     if (animeItems.length > 0) {
-      console.log(`批量导入 ${animeItems.length} 个角色`)
       emit('select-multiple', animeItems)
     }
     
-    // 导入完成后显示成功消息
-    console.log(`成功导入 ${animeItems.length}/${characters.length} 个角色`)
   } catch (e: any) {
     console.error('导入角色失败:', e)
     error.value = e.message || '导入角色失败'

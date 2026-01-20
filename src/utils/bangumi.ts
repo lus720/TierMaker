@@ -98,14 +98,12 @@ export async function searchBangumiAnime(
     const url = `${BANGUMI_API_BASE}/v0/search/subjects?limit=${limit}&offset=${offset}`
     const requestBody = {
       keyword,
-      filter: { type: [1,2,3,4,5] }, // 1书籍; 2动画; 3音乐;4游戏;6三次元
+      filter: { type: [1, 2, 3, 4, 5] }, // 1书籍; 2动画; 3音乐;4游戏;6三次元
     }
 
-    console.log('Bangumi 搜索请求 URL:', url)
-    console.log('Bangumi 搜索请求参数:', { keyword, limit, offset })
 
     const headers = getRequestHeaders()
-    
+
     const response = await fetchWithTimeout(
       url,
       {
@@ -149,27 +147,27 @@ export async function searchBangumiAnime(
     return (result.data || []) as BgmSearchResult[]
   } catch (error: any) {
     console.error('Bangumi 搜索错误:', error)
-    
+
     if (error instanceof BangumiError) {
       throw error
     }
-    
+
     // 检查是否是网络错误
     if (error.message && (
-      error.message.includes('fetch') || 
-      error.message.includes('network') || 
+      error.message.includes('fetch') ||
+      error.message.includes('network') ||
       error.message.includes('Failed to fetch') ||
       error.message.includes('CORS') ||
       error.name === 'TypeError'
     )) {
       throw new BangumiError('网络连接失败，可能是 CORS 问题。请检查网络连接或稍后重试')
     }
-    
+
     // 检查是否是超时错误
     if (error.name === 'AbortError' || error.message.includes('超时')) {
       throw new BangumiError('请求超时，请检查网络连接')
     }
-    
+
     throw new BangumiError(`网络错误: ${error.message || '未知错误'}`)
   }
 }
@@ -261,7 +259,7 @@ export async function searchBangumiCharacters(
     const characters = result.data.map((character: any) => {
       // 提取中文名
       const nameCn = character.infobox?.find((item: any) => item.key === "简体中文名")?.value || null
-      
+
       // 提取英文名或罗马字
       let nameEn: string | undefined = undefined
       const aliases = character.infobox?.find((item: any) => item.key === '别名')?.value
@@ -297,27 +295,27 @@ export async function searchBangumiCharacters(
     return characters
   } catch (error: any) {
     console.error('Bangumi 角色搜索错误:', error)
-    
+
     if (error instanceof BangumiError) {
       throw error
     }
-    
+
     // 检查是否是网络错误
     if (error.message && (
-      error.message.includes('fetch') || 
-      error.message.includes('network') || 
+      error.message.includes('fetch') ||
+      error.message.includes('network') ||
       error.message.includes('Failed to fetch') ||
       error.message.includes('CORS') ||
       error.name === 'TypeError'
     )) {
       throw new BangumiError('网络连接失败，可能是 CORS 问题。请检查网络连接或稍后重试')
     }
-    
+
     // 检查是否是超时错误
     if (error.name === 'AbortError' || error.message.includes('超时')) {
       throw new BangumiError('请求超时，请检查网络连接')
     }
-    
+
     throw new BangumiError(`网络错误: ${error.message || '未知错误'}`)
   }
 }
@@ -366,18 +364,10 @@ export async function getCharactersBySubjectId(
 
     // API 返回的是数组格式，每个元素是角色对象，直接包含 id, name, images 等字段
     const responseData = await response.json()
-    
-    // 添加调试日志查看实际返回的数据结构
-    console.log('API 返回的原始数据:', responseData)
-    if (Array.isArray(responseData) && responseData.length > 0) {
-      console.log('第一个角色的数据结构:', responseData[0])
-      console.log('第一个角色的 ID:', responseData[0].id)
-      console.log('第一个角色的 name:', responseData[0].name)
-      console.log('第一个角色的 images:', responseData[0].images)
-    }
-    
+
+
     let characters: any[] = []
-    
+
     // 处理不同的返回格式
     if (Array.isArray(responseData)) {
       characters = responseData
@@ -387,8 +377,7 @@ export async function getCharactersBySubjectId(
       console.warn('角色 API 返回格式不正确，期望数组:', responseData)
       return []
     }
-    
-    console.log(`解析到 ${characters.length} 个角色`)
+
 
     // 转换数据格式
     // API 返回的每个元素直接就是角色对象，包含 id, name, images, relation 等字段
@@ -398,7 +387,7 @@ export async function getCharactersBySubjectId(
         // 处理图片URL - images 对象直接包含 large, medium, small, grid 字段
         const images = char.images || {}
         const imageUrl = images.large || images.medium || images.grid || images.small || ''
-        
+
         // 如果 images 对象存在但所有字段都为空字符串，则设为 null
         const hasValidImage = imageUrl && imageUrl.trim() !== ''
         const finalImageUrl = hasValidImage ? imageUrl : null
@@ -422,42 +411,35 @@ export async function getCharactersBySubjectId(
             small: images.small || undefined,
           }
         } as BgmCharacterSearchResult
-        
-        console.log(`转换角色 ${convertedChar.id}:`, {
-          name: convertedChar.name,
-          image: convertedChar.image,
-          hasImage: hasValidImage
-        })
-        
+
         return convertedChar
       })
       .filter((char: any) => char && char.id) // 过滤掉无效的角色
 
-    console.log(`转换后得到 ${result.length} 个有效角色`)
     return result
   } catch (error: any) {
     console.error('获取角色列表错误:', error)
-    
+
     if (error instanceof BangumiError) {
       throw error
     }
-    
+
     // 检查是否是网络错误
     if (error.message && (
-      error.message.includes('fetch') || 
-      error.message.includes('network') || 
+      error.message.includes('fetch') ||
+      error.message.includes('network') ||
       error.message.includes('Failed to fetch') ||
       error.message.includes('CORS') ||
       error.name === 'TypeError'
     )) {
       throw new BangumiError('网络连接失败，可能是 CORS 问题。请检查网络连接或稍后重试')
     }
-    
+
     // 检查是否是超时错误
     if (error.name === 'AbortError' || error.message.includes('超时')) {
       throw new BangumiError('请求超时，请检查网络连接')
     }
-    
+
     throw new BangumiError(`网络错误: ${error.message || '未知错误'}`)
   }
 }
