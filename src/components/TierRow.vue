@@ -649,6 +649,14 @@ async function handleFileDrop(event: DragEvent) {
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  opacity: 0; /* 初始隐藏 */
+  animation: fadeIn 0.05s linear 0.2s forwards; /* 0.2s 后显示 */
+}
+
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+  }
 }
 
 .progress-ring {
@@ -663,7 +671,8 @@ async function handleFileDrop(event: DragEvent) {
   stroke-linecap: round;
   transform: rotate(-90deg);
   transform-origin: 50% 50%;
-  animation: progressRing 0.5s linear forwards;
+  /* 0.2s 延迟，0.3s 动画时长，总计 0.5s */
+  animation: progressRing 0.3s linear 0.2s forwards;
 }
 
 @keyframes progressRing {
