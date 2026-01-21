@@ -80,15 +80,21 @@ export function getIsDragging(): boolean {
  */
 function buildGridInfo(ignoredEl: HTMLElement | null): {
     container: HTMLElement;
-    centerY: number;
-    items: { element: Element; centerX: number }[]
+    containerRect: DOMRect; // 整个容器的 Rect
+    visualRows: {
+        centerY: number;
+        items: { element: Element; centerX: number; rect: DOMRect }[]
+    }[]
 }[] {
-    const grid: { container: HTMLElement; centerY: number; items: { element: Element; centerX: number }[] }[] = []
+    const grid: {
+        container: HTMLElement;
+        containerRect: DOMRect;
+        visualRows: { centerY: number; items: { element: Element; centerX: number; rect: DOMRect }[] }[]
+    }[] = []
 
     for (const container of containers.values()) {
         const containerRect = container.getBoundingClientRect()
-        const centerY = containerRect.top + containerRect.height / 2
-
+        // 过滤子元素
         const children = Array.from(container.children).filter(child =>
             child !== ignoredEl &&
             child !== placeholderEl &&
@@ -97,18 +103,80 @@ function buildGridInfo(ignoredEl: HTMLElement | null): {
             !child.classList.contains('empty')
         )
 
-        const items = children.map(child => {
+        const itemsWithRect = children.map(child => {
             const rect = child.getBoundingClientRect()
             return {
                 element: child,
-                centerX: rect.left + rect.width / 2
+                centerX: rect.left + rect.width / 2,
+                centerY: rect.top + rect.height / 2,
+                rect
             }
         })
 
-        grid.push({ container, centerY, items })
+        // 分组为视觉行
+        // 逻辑：如果两个相邻元素的 top 差值超过一定阈值（例如高度的一半），则视为换行
+        const visualRows: { centerY: number; items: { element: Element; centerX: number; rect: DOMRect }[] }[] = []
+        
+        if (itemsWithRect.length > 0) {
+            let currentRowItems = [itemsWithRect[0]]
+            let currentRowTop = itemsWithRect[0].rect.top
+            // 为了计算 centerY，我们先收集所有 items，最后再算
+            
+            for (let i = 1; i < itemsWithRect.length; i++) {
+                const item = itemsWithRect[i]
+                // 判断是否换行：当前 item 的 top 比上一行的 top 大了很多
+                // 这里简单判断：如果 item.top > (currentRowTop + item.height * 0.5)
+                // 或者更简单的：items 已经是 DOM 顺序，如果 item.left < prevItem.right (且差距较大)，但通常 DOM 顺序是 Z 字形
+                // 最稳健的方式是看 top 坐标
+                
+                if (Math.abs(item.rect.top - currentRowTop) > 20) { // 20px 容差，或者用 height 的一半
+                    // 结算上一行
+                    visualRows.push({
+                        centerY: calculateRowCenterY(currentRowItems),
+                        items: currentRowItems
+                    })
+                    // 开启新一行
+                    currentRowItems = [item]
+                    currentRowTop = item.rect.top
+                } else {
+                    currentRowItems.push(item)
+                }
+            }
+            // 结算最后一行
+            if (currentRowItems.length > 0) {
+                visualRows.push({
+                    centerY: calculateRowCenterY(currentRowItems),
+                    items: currentRowItems
+                })
+            }
+        } else {
+            // 如果没有 item，但容器还在，创建一个空的 visualRow (使用容器中心)
+            visualRows.push({
+                centerY: containerRect.top + containerRect.height / 2,
+                items: []
+            })
+        }
+
+        grid.push({ container, containerRect, visualRows })
     }
 
     return grid
+}
+
+function calculateRowCenterY(items: { rect: DOMRect }[]): number {
+    if (items.length === 0) return 0
+    // 取第一个和最后一个的平均，或者所有 items 的平均
+    // 假设一行中高度差不多
+    // 更精确：行内 item 的 minTop 和 maxBottom 的中间
+    let minTop = Infinity
+    let maxBottom = -Infinity
+    
+    for (const item of items) {
+        if (item.rect.top < minTop) minTop = item.rect.top
+        if (item.rect.bottom > maxBottom) maxBottom = item.rect.bottom
+    }
+    
+    return (minTop + maxBottom) / 2
 }
 
 /**
@@ -123,52 +191,113 @@ function findNearestGridPosition(
 
     if (grid.length === 0) return null
 
-    // 1. 找到最近的行
-    let nearestRow = grid[0]
-    let minYDistance = Math.abs(mouseY - nearestRow.centerY)
+    // 1. 找到最近的容器 (Container)
+    // 这里我们可以先看 mouseY 是否在 container 范围内，或者找最近的 Container center
+    
+    // 简单起见，我们还是找最近的“行”的所有集合中心？如果不准确，可能需要重写逻辑：
+    // 先找包含鼠标的 Container，如果没有，找最近的 Container
+    
+    let nearestContainerData = grid[0]
+    let minContainerDistance = Infinity
+    
+    // 辅助函数：计算点到矩形的垂直距离 (忽略 X 轴，如果 Y 在范围内则为 0)
+    const distToRect = (_x: number, y: number, rect: DOMRect) => {
+        // const dx = Math.max(rect.left - x, 0, x - rect.right); // 忽略 X 轴
+        const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+        return dy; // 只返回垂直距离
+    }
 
-    for (const row of grid) {
+    for (const g of grid) {
+        const dist = distToRect(mouseX, mouseY, g.containerRect)
+        if (dist < minContainerDistance) {
+            minContainerDistance = dist
+            nearestContainerData = g
+        }
+    }
+    
+    // 2. 在最近的 Container 中，找到最近的 Visual Row
+    const { container, visualRows } = nearestContainerData
+    
+    if (visualRows.length === 0) return { container, sibling: null }
+    
+    let nearestRow = visualRows[0]
+    let minYDistance = Math.abs(mouseY - nearestRow.centerY)
+    
+    for (const row of visualRows) {
         const distance = Math.abs(mouseY - row.centerY)
         if (distance < minYDistance) {
             minYDistance = distance
             nearestRow = row
         }
     }
-
-    // 2. 找到行内最近的列
-    const { container, items } = nearestRow
-
+    
+    // 3. 在最近的 Visual Row 中，找到最近的 Item (X 轴)
+    const items = nearestRow.items
+    
     if (items.length === 0) {
+        // 如果这行是空的（可能是刚生成的空行），但通常至少有个 items
+        // 如果是整个 Container 空的，buildGridInfo 会生成一个空 items 的 row
         return { container, sibling: null }
     }
 
     const insertPoints: { x: number; sibling: Element | null }[] = []
 
-    const firstItemRect = items[0].element.getBoundingClientRect()
+    // 第一个点
+    const firstItemRect = items[0].rect
     insertPoints.push({ x: firstItemRect.left, sibling: items[0].element })
 
+    // 中间点
     for (let i = 0; i < items.length - 1; i++) {
-        const currentRect = items[i].element.getBoundingClientRect()
-        const nextRect = items[i + 1].element.getBoundingClientRect()
+        const currentRect = items[i].rect
+        const nextRect = items[i + 1].rect
         const midX = (currentRect.right + nextRect.left) / 2
         insertPoints.push({ x: midX, sibling: items[i + 1].element })
     }
 
-    const lastItemRect = items[items.length - 1].element.getBoundingClientRect()
+    // 最后一个点
+    const lastItemRect = items[items.length - 1].rect
     insertPoints.push({ x: lastItemRect.right, sibling: null })
-
-    let nearestPoint = insertPoints[0]
-    let minXDistance = Math.abs(mouseX - nearestPoint.x)
+    
+    // 实际上这里有个 Bug：如果 "sibling: null"，那是插入到 items[last] 的后面
+    // 但 items[last] 可能不是 container 的最后一个子元素！
+    // 因为 visualRow 只是 container 的一部分。
+    // 如果 visualRow 是 container 的中间行，rowEnd 的 sibling 应该是 visualRow 中最后一个 item 的下一个元素。
+    // 修正逻辑：
+    
+    // 我们需要的是：在 items 中找到一个插入位置。
+    // 如果是 items[0] 之前，sibling = items[0].element
+    // 如果是 items[i] 和 items[i+1] 之间，sibling = items[i+1].element
+    // 如果是 items[last] 之后，sibling = items[last].element.nextElementSibling ?
+    
+    // 重新遍历寻找最近点 X
+    let nearestPointX = insertPoints[0].x
+    let nearestSibling = insertPoints[0].sibling
+    let minXDistance = Math.abs(mouseX - nearestPointX)
 
     for (const point of insertPoints) {
         const distance = Math.abs(mouseX - point.x)
         if (distance < minXDistance) {
             minXDistance = distance
-            nearestPoint = point
+            nearestPointX = point.x
+            nearestSibling = point.sibling
         }
     }
+    
+    // 特殊情况处理：如果是某行的“最后一个位置” (sibling === null)
+    // 但这行后面可能还有下一行。所以真正的 sibling 应该是下一行的第一个元素？
+    // 或者，如果 sibling === null，代表 appendChild 到 items[last] 后面。
+    // 但是在这个 visualRow 的上下文里，appendChild 意味着插入到这一行的末尾。
+    // 在 DOM 层面，如果这一行不是最后一行，那么这一行末尾元素的 nextSibling 就是下一行的开头元素。
+    // 所以，如果 loop 选中的 sibling 是 null，我们需要检查 DOM 结构。
+    
+    if (nearestSibling === null) {
+        // 找到这行最后一个 item
+        const lastItem = items[items.length - 1].element
+        // 返回它的下一个兄弟作为 sibling。如果它是整个 container 最后一个，nextSibling 也就是 null，正好。
+        nearestSibling = lastItem.nextElementSibling
+    }
 
-    return { container, sibling: nearestPoint.sibling }
+    return { container, sibling: nearestSibling }
 }
 
 /**
