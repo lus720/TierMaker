@@ -2,6 +2,7 @@
 import { ref, watch, nextTick } from 'vue'
 import type { AnimeItem, CropPosition } from '../types'
 import { generateDefaultUrl } from '../utils/url'
+import { getSize } from '../utils/configManager'
 
 const props = defineProps<{
   item: AnimeItem | null
@@ -84,9 +85,10 @@ function updatePreviewCrop() {
   const naturalWidth = originalImg.naturalWidth
   const naturalHeight = originalImg.naturalHeight
   const naturalRatio = naturalWidth / naturalHeight
-  const targetRatio = 0.75 // 3:4
-  const previewWidth = 100
-  const previewHeight = 133
+  const previewWidth = getSize('image-width') || 100
+  const previewHeight = getSize('image-height') || 133
+  const configRatio = getSize('image-aspect-ratio')
+  const targetRatio = configRatio || (previewWidth / previewHeight)
   
   // 确定裁剪位置（使用 cropPosition，不再使用 previewCropPosition）
   let cropPos = cropPosition.value
@@ -167,10 +169,11 @@ function updatePreviewCrop() {
     }
     
     // ✅ 使用与实际裁剪完全相同的逻辑计算裁剪区域（像素级精确）
-    // 目标尺寸：100px × 133px (3:4 比例)
-    const containerWidth = 100
-    const containerHeight = 133
-    const targetAspectRatio = 0.75 // 3/4
+    // 目标尺寸：width × height (targetRatio 比例)
+    const containerWidth = getSize('image-width') || 100
+    const containerHeight = getSize('image-height') || 133
+    const configRatio = getSize('image-aspect-ratio')
+    const targetAspectRatio = configRatio || (containerWidth / containerHeight)
     
     let sourceX = 0
     let sourceY = 0
@@ -609,9 +612,10 @@ function updateCropPositionFromMask(maskLeft: number, maskTop: number) {
   
   
   // 计算目标尺寸
-  const containerWidth = 100
-  const containerHeight = 133
-  const targetAspectRatio = 0.75
+  const containerWidth = getSize('image-width') || 100
+  const containerHeight = getSize('image-height') || 133
+  const configRatio = getSize('image-aspect-ratio')
+  const targetAspectRatio = configRatio || (containerWidth / containerHeight)
   
   let sourceWidth = 0
   let sourceHeight = 0
@@ -801,7 +805,7 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
 .modal-content {
   background: var(--bg-color);
   border: 2px solid var(--border-color);
-  max-width: 700px;
+  max-width: var(--size-modal-max-width-large, 700px);
   width: 90%;
   height: 80vh;
   max-height: 80vh;
@@ -815,7 +819,7 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
+  padding: var(--size-app-padding, 20px);
   border-bottom: 2px solid var(--border-color);
 }
 
@@ -848,7 +852,7 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
 }
 
 .modal-body {
-  padding: 20px;
+  padding: var(--size-app-padding, 20px);
   overflow-y: auto;
   flex: 1;
 }
@@ -988,11 +992,11 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
 }
 
 .btn {
-  padding: 10px 20px;
+  padding: var(--size-btn-padding-y, 10px) var(--size-btn-padding-x, 20px);
   border: 2px solid var(--border-color);
   background: var(--bg-color);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--size-btn-font-size, 14px);
   font-weight: bold;
   cursor: pointer;
   transition: all 0.2s;

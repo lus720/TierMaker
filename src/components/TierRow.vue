@@ -2,6 +2,7 @@
 import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { registerContainer, unregisterContainer, startDrag, cancelDrag } from '../utils/dragManager'
 import { getItemUrl } from '../utils/url'
+import { getSize } from '../utils/configManager'
 import type { TierRow, AnimeItem } from '../types'
 
 // ... (props definition remains same)
@@ -39,6 +40,7 @@ const pressingItemId = ref<string | number | null>(null)
 
 const displayItems = computed(() => {
   const items = [...props.row.items]
+  // 给空位设置一个默认名字，以符合"图片+作品名"的格式
   items.push({} as AnimeItem) 
   return items
 })
@@ -174,10 +176,11 @@ function handleImageLoad(event: Event) {
   
   
   // 统一处理所有图片，使用相同的裁剪规则
-  // 目标宽高比 target = 0.75 (3:4)，容器尺寸 100px × 133px
-  const targetAspectRatio = 0.75 // 3/4
-  const containerWidth = 100
-  const containerHeight = 133
+  // 目标宽高比 target = config.ratio OR width/height
+  const containerWidth = getSize('image-width') || 100
+  const containerHeight = getSize('image-height') || 133
+  const configRatio = getSize('image-aspect-ratio')
+  const targetAspectRatio = configRatio || (containerWidth / containerHeight)
   const naturalAspectRatio = img.naturalWidth / img.naturalHeight
   
   // ✅ 如果已经是裁剪后的 dataURL，就不要再裁一次（避免二次 load 循环）
@@ -222,7 +225,8 @@ function handleImageLoad(event: Event) {
       if (naturalWidth && naturalHeight) {
         // ✅ 修复：使用可移动范围计算百分比，避免"向中心偏移"
         // object-fit: cover 时，图片会被缩放，我们需要计算在缩放后的图片中，裁剪区域的位置
-        const targetAspectRatio = containerWidth / containerHeight // 0.75
+        const configRatio = getSize('image-aspect-ratio')
+        const targetAspectRatio = configRatio || (containerWidth / containerHeight)
         
         // 计算图片在 cover 模式下的实际显示尺寸
         let displayedWidth = naturalWidth
@@ -327,8 +331,10 @@ async function cropImageWithCanvasForDisplay(
   cropPosition: { sourceX: number; sourceY: number; sourceWidth: number; sourceHeight: number }
 ): Promise<string | null> {
   const { sourceX, sourceY, sourceWidth, sourceHeight } = cropPosition
-  const containerWidth = 100
-  const containerHeight = 133
+  const containerWidth = getSize('image-width') || 100
+  const containerHeight = getSize('image-height') || 133
+  // 注意：这里裁剪 canvas 的尺寸应当与显示尺寸一致，但也应该参考 aspect-ratio
+  // 为了简单起见，我们假设 width/height 已经正确配置匹配 aspect-ratio
   
   
   return new Promise((resolve, reject) => {
@@ -617,18 +623,18 @@ async function handleFileDrop(event: DragEvent) {
 .tier-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: var(--size-row-gap, 10px);
   flex: 1;
-  min-height: 120px;
-  padding: 10px;
+  min-height: var(--size-row-min-height, 120px);
+  padding: var(--size-row-padding, 10px);
   background: var(--bg-color);
   align-self: stretch;
 }
 
 .tier-item {
   position: relative;
-  width: 100px;
-  height: 173px;
+  width: var(--size-item-width, 100px);
+  height: var(--size-item-height, 173px);
   border: none;
   background: var(--bg-color);
   cursor: pointer;
@@ -661,8 +667,8 @@ async function handleFileDrop(event: DragEvent) {
 
 .progress-ring {
   display: block;
-  width: 50px;
-  height: 50px;
+  width: var(--size-long-press-size, 50px);
+  height: var(--size-long-press-size, 50px);
 }
 
 .progress-ring-circle {
@@ -694,24 +700,24 @@ async function handleFileDrop(event: DragEvent) {
 }
 
 .tier-item.empty {
-  border: 2px dashed var(--border-light-color);
+  border: var(--size-border-width-empty-item, 2px) dashed var(--border-light-color);
   cursor: pointer;
   order: 9999; /* 确保空位始终在最后 */
 }
 
 /* 当隐藏作品名时，调整作品项高度（排除空位） */
 .tier-item.hide-name:not(.empty) {
-  height: 133px !important;
+  height: var(--size-item-height-hide-name, 133px) !important;
 }
 
 /* 当隐藏作品名时，空位也只显示占位符部分（封面） */
 .tier-item.empty.hide-name {
-  height: 133px !important;
+  height: var(--size-item-height-hide-name, 133px) !important;
 }
 
 /* 重复条目的红色高亮 */
 .tier-item.duplicate {
-  border: 3px solid #ff0000 !important;
+  border: var(--size-border-width-item-duplicate, 3px) solid #ff0000 !important;
   box-shadow: 0 0 8px rgba(255, 0, 0, 0.5);
 }
 
@@ -740,8 +746,10 @@ async function handleFileDrop(event: DragEvent) {
 }
 
 .item-image-container {
-  width: 100px; /* 固定宽度 */
-  height: 133px; /* 3:4 比例：100 * 4 / 3 = 133.33px */
+  width: var(--size-image-width, 100px); /* 固定宽度 */
+  /* 如果设置了 aspect-ratio，优先使用它控制比例 */
+  height: var(--size-image-height, auto);
+  aspect-ratio: var(--size-image-aspect-ratio, auto);
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -750,8 +758,8 @@ async function handleFileDrop(event: DragEvent) {
 }
 
 .item-image {
-  width: 100px; /* 固定宽度 */
-  height: 133px; /* 固定高度，与容器一致 */
+  width: var(--size-image-width, 100px); /* 固定宽度 */
+  height: 100%; /* 高度跟随容器 */
   object-fit: cover; /* 使用 cover 模式，由 JavaScript 动态设置 object-position */
   object-position: center; /* 默认居中，JavaScript 会根据宽高比调整 */
   display: block;
@@ -768,7 +776,9 @@ async function handleFileDrop(event: DragEvent) {
 
 .item-placeholder {
   width: 100%;
-  height: 133px;
+  height: var(--size-image-height, 133px);
+  /* min-height: var(--size-image-height, 133px); */
+  aspect-ratio: var(--size-image-aspect-ratio, auto);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -776,13 +786,13 @@ async function handleFileDrop(event: DragEvent) {
 }
 
 .placeholder-text {
-  font-size: 32px;
+  font-size: var(--size-placeholder-font-size, 32px);
   color: var(--border-light-color);
   font-weight: bold;
 }
 
 .item-name {
-  height: 40px;
+  height: var(--size-item-name-height, 40px);
   padding: 4px;
   font-size: 12px;
   text-align: center;
@@ -790,21 +800,22 @@ async function handleFileDrop(event: DragEvent) {
   text-overflow: ellipsis;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
-  background: var(--bg-color);
+  /* background: var(--bg-color); */
   border-top: none;
 }
 
 .delete-btn {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 20px;
-  height: 20px;
+  top: var(--size-delete-btn-offset, 4px);
+  right: var(--size-delete-btn-offset, 4px);
+  width: var(--size-delete-btn-size, 20px);
+  height: var(--size-delete-btn-size, 20px);
   border: 1px solid var(--border-color);
   background: var(--bg-color);
   color: var(--text-color);
-  font-size: 16px;
+  font-size: var(--size-delete-btn-font-size, 16px);
   font-weight: bold;
   cursor: pointer;
   display: flex;

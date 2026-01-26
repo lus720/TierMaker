@@ -10,18 +10,13 @@ const THEME_KEY = 'theme-preference'
 const HIDE_ITEM_NAMES_KEY = 'hide-item-names'
 const EXPORT_SCALE_KEY = 'export-scale'
 
+import { getDefaultTiers, getSetting } from './configManager'
+
 /**
  * 默认评分等级配置
- * 等级：EX, S, A, B, C, N/A
- * 颜色：使用预设颜色，跳过第二个（#ff9f7f）
+ * 从 config.yaml 获取
  */
-export const DEFAULT_TIER_CONFIGS = [
-  { id: '夯', label: '夯', color: '#ff7f7f', order: 0, fontSize: 32 },      // 红色/粉红色
-  { id: '顶级', label: '顶级', color: '#ffaf7f', order: 1, fontSize: 32 },       // 浅橙色/桃色
-  { id: '人上人', label: '人上人', color: '#ffcf7f', order: 2, fontSize: 32 },       // 橙黄色/杏色
-  { id: 'NPC', label: 'NPC', color: '#ffdf7f', order: 3, fontSize: 32 },        // 浅橙色
-  { id: '拉完了', label: '拉完了', color: '#cfcfcf', order: 4, fontSize: 32 },       // 浅灰色
-]
+export const DEFAULT_TIER_CONFIGS = getDefaultTiers()
 
 /**
  * 保存 Tier 数据到本地存储
@@ -46,7 +41,7 @@ export function loadTierData(): Tier[] {
   } catch (error) {
     console.error('加载数据失败:', error)
   }
-  
+
   // 返回默认数据
   return DEFAULT_TIER_CONFIGS.map(config => ({
     id: config.id,
@@ -85,7 +80,7 @@ export function loadTierConfigs(): TierConfig[] {
   } catch (error) {
     console.error('加载配置失败:', error)
   }
-  
+
   return DEFAULT_TIER_CONFIGS
 }
 
@@ -173,7 +168,7 @@ export function loadTitleFontSize(): number {
   } catch (error) {
     console.error('加载标题字体大小失败:', error)
   }
-  return 32 // 默认字体大小
+  return getSetting('title-font-size') || 32
 }
 
 /**
@@ -211,7 +206,7 @@ export function importAllData(data: ExportData): {
     if (!data.tiers || !data.tierConfigs) {
       return { success: false, error: '数据格式不正确' }
     }
-    
+
     saveTierData(data.tiers)
     saveTierConfigs(data.tierConfigs)
     if (data.title) {
@@ -220,7 +215,7 @@ export function importAllData(data: ExportData): {
     if (data.titleFontSize !== undefined) {
       saveTitleFontSize(data.titleFontSize)
     }
-    
+
     return { success: true }
   } catch (error) {
     console.error('导入数据失败:', error)
@@ -284,7 +279,7 @@ export function loadThemePreference(): 'light' | 'dark' | 'auto' {
   } catch (error) {
     console.error('加载主题设置失败:', error)
   }
-  return 'auto' // 默认跟随系统
+  return getSetting('theme') || 'auto'
 }
 
 /**
@@ -310,7 +305,7 @@ export function loadHideItemNames(): boolean {
   } catch (error) {
     console.error('加载隐藏作品名设置失败:', error)
   }
-  return false // 默认显示作品名
+  return getSetting('hide-item-names') ?? false
 }
 
 /**
@@ -342,7 +337,7 @@ export function loadExportScale(): number {
   } catch (error) {
     console.error('加载导出倍率设置失败:', error)
   }
-  return 4 // 默认 4 倍
+  return getSetting('export-scale') || 4
 }
 
 /**
@@ -367,20 +362,20 @@ export function clearItemsAndTitle(): void {
 export function resetSettings(): void {
   try {
     // 重置标题字体大小
-    saveTitleFontSize(32)
-    
+    saveTitleFontSize(getSetting('title-font-size') || 32)
+
     // 重置主题
-    saveThemePreference('auto')
-    
+    saveThemePreference(getSetting('theme') || 'auto')
+
     // 重置隐藏作品名
-    saveHideItemNames(false)
-    
+    saveHideItemNames(getSetting('hide-item-names') ?? false)
+
     // 重置导出倍率
-    saveExportScale(4)
-    
+    saveExportScale(getSetting('export-scale') || 4)
+
     // 重置评分等级配置
     saveTierConfigs(DEFAULT_TIER_CONFIGS)
-    
+
     // 注意：不重置标题，保留用户设置的标题
     // 注意：不清空 BGM_TOKEN_KEY，因为这是用户配置
     // 注意：不清空作品数据（STORAGE_KEY），只重置设置

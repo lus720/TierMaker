@@ -78,13 +78,13 @@ body {
 
 #app {
   min-height: 100vh;
-  padding: 20px;
+  padding: var(--size-app-padding, 20px);
 }
 
 /* 滚动条样式 */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: var(--size-scrollbar-size, 8px);
+  height: var(--size-scrollbar-size, 8px);
 }
 
 ::-webkit-scrollbar-track {
@@ -93,7 +93,7 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
-  border-radius: 4px;
+  border-radius: var(--size-scrollbar-radius, 4px);
 }
 
 ::-webkit-scrollbar-thumb:hover {

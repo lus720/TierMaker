@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch, nextTick } from 'vue'
 import TierRow from './TierRow.vue'
+import { getSize } from '../utils/configManager'
 import type { Tier, TierConfig, AnimeItem } from '../types'
 
 const props = defineProps<{
@@ -63,8 +64,8 @@ function updateMaxLabelWidth() {
       // 获取实际的样式值
       const containerStyle = window.getComputedStyle(sampleLabel)
       const textStyle = window.getComputedStyle(sampleText)
-      const paddingLeft = parseFloat(containerStyle.paddingLeft) || 10
-      const paddingRight = parseFloat(containerStyle.paddingRight) || 10
+      const paddingLeft = parseFloat(containerStyle.paddingLeft) || getSize('label-padding-x') || 10
+      const paddingRight = parseFloat(containerStyle.paddingRight) || getSize('label-padding-x') || 10
       const padding = paddingLeft + paddingRight
       
       // 创建临时文本元素来测量文本宽度
@@ -86,7 +87,7 @@ function updateMaxLabelWidth() {
       uniqueTierIds.forEach(tierId => {
         const config = props.tierConfigs.find(c => c.id === tierId)
         const labelText = config?.label || tierId
-        const fontSize = config?.fontSize || 32
+        const fontSize = config?.fontSize || getSize('label-font-size') || 32
         
         // 应用该等级的字号
         tempText.style.fontSize = `${fontSize}px`
@@ -106,8 +107,9 @@ function updateMaxLabelWidth() {
       // 清理临时元素
       document.body.removeChild(tempText)
       
-      // 设置最大宽度（至少保留最小宽度 80px）
-      maxLabelWidth.value = Math.max(maxWidth, 80)
+      // 设置最大宽度（至少保留最小宽度）
+      const minWidth = getSize('label-min-width') || 80
+      maxLabelWidth.value = Math.max(maxWidth, minWidth)
     })
   })
 }
@@ -142,7 +144,7 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
         >
           <span 
             class="tier-label-text"
-            :style="{ fontSize: `${getTierConfig(tier.id)?.fontSize || 32}px` }"
+            :style="{ fontSize: `${getTierConfig(tier.id)?.fontSize || getSize('label-font-size') || 32}px` }"
           >{{ getTierConfig(tier.id)?.label || tier.id }}</span>
         </div>
         
@@ -222,7 +224,7 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
   display: flex;
   align-items: stretch;
   gap: 0;
-  border-top: 1px solid var(--border-color);
+  border-top: var(--size-border-width-thin, 1px) solid var(--border-color);
 }
 
 .tier-row-wrapper:first-child {
@@ -236,9 +238,9 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
 }
 
 .tier-label {
-  min-width: 80px; /* 最小宽度 */
-  padding: 0 10px; /* 左右内边距，确保文字不贴边 */
-  min-height: 120px;
+  min-width: var(--size-label-min-width, 80px); /* 最小宽度 */
+  padding: 0 var(--size-label-padding-x, 10px); /* 左右内边距 */
+  min-height: var(--size-label-min-height, 120px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -253,7 +255,7 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
 }
 
 .tier-label-text {
-  font-size: 32px; /* 减小字体大小以适应横排 */
+  font-size: var(--size-label-font-size, 32px); /* 减小字体大小以适应横排 */
   font-weight: bold;
   color: var(--bg-color);
   writing-mode: horizontal-tb !important; /* 强制所有文字横排显示 */
@@ -270,11 +272,11 @@ watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('|
 }
 
 .delete-row-btn {
-  width: 30px;
-  min-width: 30px;
+  width: var(--size-delete-row-btn-width, 30px);
+  min-width: var(--size-delete-row-btn-width, 30px);
   background: var(--bg-color);
   color: var(--text-color);
-  font-size: 24px;
+  font-size: var(--size-delete-row-btn-font-size, 24px);
   font-weight: bold;
   cursor: pointer;
   display: flex;

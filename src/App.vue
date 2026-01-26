@@ -9,6 +9,7 @@ import EditItemModal from './components/EditItemModal.vue'
 
 import { getItemUrl } from './utils/url'
 import { processExportImages, processEmptySlots, configureExportStyles, hideExportUIElements, syncThemeToClonedDoc } from './utils/exportUtils'
+import { initConfigStyles } from './utils/configManager'
 import type { Tier, AnimeItem, TierConfig, CropPosition } from './types'
 import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, clearItemsAndTitle, resetSettings, loadThemePreference, loadHideItemNames, loadExportScale, DEFAULT_TIER_CONFIGS, type ExportData } from './utils/storage'
 
@@ -129,6 +130,9 @@ function handleClickOutside(event: MouseEvent) {
 
 // 加载数据
 onMounted(() => {
+  // 初始化配置样式（从 YAML 注入 CSS 变量）
+  initConfigStyles()
+  
   // 监听点击事件，用于关闭导出菜单
   document.addEventListener('click', handleClickOutside)
   
@@ -1400,7 +1404,7 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
 }
 
 .app {
-  max-width: 1400px;
+  max-width: var(--size-app-max-width, 1400px);
   margin: 0 auto;
 }
 
@@ -1408,8 +1412,9 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   display: flex;
   justify-content: space-between;
   align-items: center;
+  align-items: center;
   margin-bottom: 0;
-  border-bottom: 2px solid var(--border-color);
+  border-bottom: var(--size-border-width-thick, 2px) solid var(--border-color);
   position: relative;
 }
 
@@ -1447,11 +1452,11 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
 }
 
 .btn {
-  padding: 10px 20px;
-  border: 2px solid var(--border-color);
+  padding: var(--size-btn-padding-y, 10px) var(--size-btn-padding-x, 20px);
+  border: var(--size-border-width-thick, 2px) solid var(--border-color);
   background: var(--bg-color);
   color: var(--text-color);
-  font-size: 14px;
+  font-size: var(--size-btn-font-size, 14px);
   font-weight: bold;
   cursor: pointer;
   transition: all 0.2s;
@@ -1501,7 +1506,7 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1000;
-  min-width: 120px;
+  min-width: var(--size-export-menu-min-width, 120px);
   display: flex;
   flex-direction: column;
 }
@@ -1559,9 +1564,9 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
 
 .confirm-modal {
   background: var(--bg-color);
-  border: 3px solid var(--border-color);
+  border: var(--size-border-width-modal, 3px) solid var(--border-color);
   width: 90%;
-  max-width: 500px;
+  max-width: var(--size-modal-max-width, 500px);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
@@ -1579,7 +1584,7 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
 }
 
 .confirm-body {
-  padding: 20px;
+  padding: var(--size-app-padding, 20px);
 }
 
 .confirm-body p {

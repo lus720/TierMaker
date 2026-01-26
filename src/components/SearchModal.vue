@@ -626,7 +626,7 @@ function handleImageError(event: Event) {
   background: var(--bg-color);
   border: 2px solid var(--border-color);
   width: 90%;
-  max-width: 700px;
+  max-width: var(--size-modal-max-width-large, 700px);
   height: 80vh;
   max-height: 80vh;
   display: flex;
@@ -638,7 +638,7 @@ function handleImageError(event: Event) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
+  padding: var(--size-app-padding, 20px);
   border-bottom: 2px solid var(--border-color);
 }
 
@@ -735,7 +735,7 @@ function handleImageError(event: Event) {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 20px;
+  padding: var(--size-app-padding, 20px);
   min-height: 0; /* 确保 flex 子元素可以缩小 */
   /* 使用 flex: 1 和 min-height: 0 让容器可以正确缩小并显示滚动条 */
 }
@@ -768,7 +768,7 @@ function handleImageError(event: Event) {
 
 .results-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--size-search-result-min-width, 120px), 1fr));
   gap: 15px;
 }
 
@@ -787,7 +787,7 @@ function handleImageError(event: Event) {
 
 .result-image {
   width: 100%;
-  height: 160px;
+  height: var(--size-search-result-image-height, 160px);
   object-fit: cover;
   display: block;
 }

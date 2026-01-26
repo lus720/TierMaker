@@ -1,0 +1,102 @@
+# ==========================================
+# TierMaker 默认配置文件
+# ==========================================
+# 这是一个系统生成的文件，定义了所有默认设置。
+# 请不要直接修改此文件（因为更新可能会覆盖它）。
+# 如需修改设置，请在 config.yaml 中进行覆盖。
+
+sizes:
+  # ==================== 图片相关 ====================
+  image-width: 100
+  image-height: 133
+  image-aspect-ratio: 0.75  # 3:4 比例，用于裁剪逻辑
+  
+  # ==================== 条目卡片 ====================
+  item-width: 100
+  item-height: 173           # 图片(133px) + 名称区(40px)
+  item-height-hide-name: 133  # 隐藏名称时的高度
+  item-name-height: 40
+  
+  # ==================== 等级标签 ====================
+  label-font-size: 32
+  label-min-width: 80
+  label-min-height: 120
+  label-padding-x: 10
+  
+  # ==================== 行样式 ====================
+  row-min-height: 120
+  row-padding: 10
+  row-gap: 10
+  border-width-thin: 1
+  border-width-thick: 2
+  border-width-item-duplicate: 3
+  border-width-empty-item: 2
+  
+  # ==================== 占位符 ====================
+  placeholder-font-size: 32
+  
+  # ==================== 按钮与图标 ====================
+  delete-btn-size: 20
+  delete-btn-font-size: 16
+  delete-btn-offset: 4
+  delete-row-btn-width: 30
+  delete-row-btn-font-size: 24
+  
+  btn-padding-x: 20
+  btn-padding-y: 10
+  btn-font-size: 14
+  
+  # ==================== 滚动条 ====================
+  scrollbar-size: 8
+  scrollbar-radius: 4
+  
+  # ==================== 应用布局 ====================
+  app-max-width: 1400
+  app-padding: 20
+  
+  # ==================== 弹窗 ====================
+  modal-max-width: 500
+  modal-max-width-large: 700
+  export-menu-min-width: 120
+  export-menu-margin-top: 5
+  export-menu-radius: 4
+  search-result-min-width: 120
+  search-result-image-height: 160
+  
+  # ==================== 长按指示器 ====================
+  long-press-size: 50
+
+settings:
+  # ==================== 全局设置 ====================
+  title-font-size: 32
+  theme: 'auto'          # light, dark, auto
+  export-scale: 4        # 1-6
+  hide-item-names: false
+
+tiers:
+  # ==================== 默认评分等级 ====================
+  - id: '夯'
+    label: '夯'
+    color: '#ff7f7f'     # 红色/粉红色
+    order: 0
+    fontSize: 32
+  - id: '顶级'
+    label: '顶级'
+    color: '#ffaf7f'     # 浅橙色/桃色
+    order: 1
+    fontSize: 32
+  - id: '人上人'
+    label: '人上人'
+    color: '#ffcf7f'     # 橙黄色/杏色
+    order: 2
+    fontSize: 32
+  - id: 'NPC'
+    label: 'NPC'
+    color: '#ffdf7f'     # 浅橙色
+    order: 3
+    fontSize: 32
+  - id: '拉完了'
+    label: '拉完了'
+    color: '#cfcfcf'     # 浅灰色
+    order: 4
+    fontSize: 32

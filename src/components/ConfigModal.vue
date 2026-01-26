@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import type { TierConfig } from '../types'
+import { getSetting } from '../utils/configManager'
 import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadThemePreference, saveThemePreference, loadHideItemNames, saveHideItemNames, loadExportScale, saveExportScale, DEFAULT_TIER_CONFIGS } from '../utils/storage'
 
 const props = defineProps<{
@@ -195,10 +196,10 @@ function handleResetSettings() {
   emit('reset-settings')
   
   // 立即更新本地显示的值（configs 会通过 watch 自动更新）
-  exportScale.value = 4
-  titleFontSize.value = 32
-  themePreference.value = 'auto'
-  hideItemNames.value = false
+  exportScale.value = getSetting('export-scale') || 4
+  titleFontSize.value = getSetting('title-font-size') || 32
+  themePreference.value = getSetting('theme') || 'auto'
+  hideItemNames.value = getSetting('hide-item-names') ?? false
   
   // 不关闭弹窗，让用户看到重置后的值
   // configs 会通过 props 的 watch 自动更新
@@ -442,7 +443,7 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 .modal-content {
   background: var(--bg-color);
   border: 2px solid var(--border-color);
-  max-width: 700px;
+  max-width: var(--size-modal-max-width-large, 700px);
   width: 90%;
   height: 80vh;
   max-height: 80vh;
@@ -489,7 +490,9 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--size-app-padding, 20px);
   border-bottom: 2px solid var(--border-color);
   flex-shrink: 0;
 }
@@ -521,7 +524,7 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 }
 
 .config-section {
-  padding: 20px;
+  padding: var(--size-app-padding, 20px);
   border-bottom: 1px solid var(--border-light-color);
 }
 
@@ -759,7 +762,7 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 }
 
 .modal-footer {
-  padding: 20px;
+  padding: var(--size-app-padding, 20px);
   border-top: 2px solid var(--border-color);
   display: flex;
   justify-content: space-between;
@@ -775,7 +778,7 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 }
 
 .add-btn {
-  padding: 10px 20px;
+  padding: var(--size-btn-padding-y, 10px) var(--size-btn-padding-x, 20px);
   border: 2px solid var(--border-color);
   background: var(--bg-color);
   color: var(--text-color);
@@ -795,7 +798,7 @@ function handleTierIdBlur(config: TierConfig, index: number) {
 }
 
 .btn {
-  padding: 10px 20px;
+  padding: var(--size-btn-padding-y, 10px) var(--size-btn-padding-x, 20px);
   border: 2px solid var(--border-color);
   font-weight: bold;
   cursor: pointer;
