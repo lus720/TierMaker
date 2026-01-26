@@ -27,6 +27,8 @@ sizes:
   row-min-height: 120
   row-padding: 10
   row-gap: 10
+  container-padding-top: 10    # 容器上边距
+  container-padding-bottom: 10 # 容器下边距
   border-width-thin: 1
   border-width-thick: 2
   border-width-item-duplicate: 3

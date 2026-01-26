@@ -2,7 +2,7 @@
 import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { registerContainer, unregisterContainer, startDrag, cancelDrag } from '../utils/dragManager'
 import { getItemUrl } from '../utils/url'
-import { getSize } from '../utils/configManager'
+import { getSize, getConfig } from '../utils/configManager'
 import type { TierRow, AnimeItem } from '../types'
 
 // ... (props definition remains same)
@@ -137,16 +137,13 @@ onMounted(() => {
   }
 })
 
-onBeforeUnmount(() => {
-  unregisterContainer(props.rowId)
-  // 如果还有其他清理逻辑
+const rowStyle = computed(() => {
+  return {}
 })
 
 // ensureEmptySlotLast 不需要了，因为我们通过 displayItems 和 CSS order 控制
-// 或者我们需要保留它以确保 placeholder 不会搞乱顺序？
-// placeholder 是由 dragManager 控制插入 DOM 的。
-// 当 drop 后，DOM 会被 component re-render 覆盖。
-// 所以不需要手动 DOM 操作。
+// ...
+
 
 function handleItemClick(index: number) {
   // 如果点击发生了（说明没有触发长按），清除定时器
@@ -550,6 +547,7 @@ async function handleFileDrop(event: DragEvent) {
     @dragenter="handleDragEnter"
     @dragleave="handleDragLeave"
     @drop="handleFileDrop"
+    :style="rowStyle"
   >
     <div
       v-for="(item, index) in displayItems"
@@ -623,12 +621,16 @@ async function handleFileDrop(event: DragEvent) {
 .tier-row {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start; /* Ensure items start from top */
   gap: var(--size-row-gap, 10px);
-  flex: 1;
+  /* flex: 1; Remove flex: 1 to allow fixed width */
   min-height: var(--size-row-min-height, 120px);
-  padding: var(--size-row-padding, 10px);
+  padding: var(--size-container-padding-top, 10px) var(--size-row-padding, 10px) var(--size-container-padding-bottom, 10px) var(--size-row-padding, 10px);
   background: var(--bg-color);
-  align-self: stretch;
+  /* align-self: stretch; Remove stretch to respect width */
+  box-sizing: border-box;
+  /* width: var(--tier-row-width, auto);  Removed fixed width */
+  flex: 1; /* Restore flex 1 to fill available space */
 }
 
 .tier-item {

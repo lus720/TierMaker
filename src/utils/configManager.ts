@@ -139,10 +139,14 @@ export function getAllSettings(): Record<string, any> {
     return config.settings ?? {}
 }
 
-/**
- * 获取默认评分等级配置
- */
 export function getDefaultTiers(): TierConfig[] {
     const config = parseConfig()
     return config.tiers ?? []
+}
+
+/**
+ * 获取完整配置对象
+ */
+export function getConfig(): ConfigData {
+    return parseConfig()
 }
