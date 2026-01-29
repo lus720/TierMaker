@@ -118,8 +118,15 @@ onMounted(() => {
   updateMaxLabelWidth()
 })
 
-// 监听配置变化（包括 label 和 fontSize）
-watch(() => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('||'), updateMaxLabelWidth, { flush: 'post' })
+// 监听配置变化（包括 label 和 fontSize）以及 tiers 变化（因为 width 计算依赖实际存在的 tierId）
+watch(
+  [
+    () => props.tierConfigs.map(c => `${c.label}|${c.fontSize || 32}`).join('||'),
+    () => props.tiers.map(t => t.id).join(',')
+  ],
+  updateMaxLabelWidth,
+  { flush: 'post' }
+)
 </script>
 
 <template>

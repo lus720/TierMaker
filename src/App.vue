@@ -129,7 +129,7 @@ function handleClickOutside(event: MouseEvent) {
 }
 
 // 加载数据
-onMounted(() => {
+onMounted(async () => {
   // 初始化配置样式（从 YAML 注入 CSS 变量）
   initConfigStyles()
   
@@ -142,7 +142,35 @@ onMounted(() => {
   hideItemNames.value = loadHideItemNames()
   exportScale.value = loadExportScale()
   tierConfigs.value = loadTierConfigs()
-  tiers.value = loadTierData()
+  
+  // Async load
+  const allLoadedTiers = await loadTierData()
+  
+  // Extract Unranked Tier
+  const loadedUnranked = allLoadedTiers.find(t => t.id === 'unranked')
+  if (loadedUnranked) {
+    unrankedTiers.value = [loadedUnranked]
+  }
+  
+  // Assign remaining to tiers (filtering happens later)
+  tiers.value = allLoadedTiers.filter(t => t.id !== 'unranked')
+
+
+  // Hydration: Convert Blobs to ObjectURLs for display
+  const allTiersToHydrate = [...tiers.value, ...(unrankedTiers.value || [])]
+  allTiersToHydrate.forEach(tier => {
+    tier.rows.forEach(row => {
+      row.items.forEach(item => {
+        if (item.image instanceof Blob) {
+           item._blob = item.image
+           item.image = URL.createObjectURL(item.image)
+        }
+        if (item.originalImage instanceof Blob) {
+           item.originalImage = URL.createObjectURL(item.originalImage)
+        }
+      })
+    })
+  })
 
   // 数据迁移：将 name_cn 迁移到 name，确保只显示一个名字（优先中文）
   let hasChanges = false
@@ -158,7 +186,7 @@ onMounted(() => {
     }
   }
 
-  tiers.value.forEach(tier => {
+  allTiersToHydrate.forEach(tier => {
     tier.rows.forEach(row => {
       row.items.forEach(item => {
         if (item.id) migrateItem(item)
@@ -170,7 +198,7 @@ onMounted(() => {
   // 注意：unrankedTiers 目前是硬编码初始值，如果后续持久化了也需要迁移
   
   if (hasChanges) {
-    saveTierData(tiers.value)
+    await saveTierData([...tiers.value, ...unrankedTiers.value])
   }
   
   // 设置标题的初始内容
@@ -183,7 +211,7 @@ onMounted(() => {
   // 确保 tiers 和 tierConfigs 同步
   const configIds = new Set(tierConfigs.value.map(c => c.id))
   
-  // 移除配置中不存在的等级
+  // 移除配置中不存在的等级 (且不是 unranked)
   tiers.value = tiers.value.filter(t => configIds.has(t.id))
   
   // 添加配置中存在但 tiers 中不存在的等级
@@ -207,7 +235,7 @@ onMounted(() => {
   })
   
   // 保存同步后的数据
-  saveTierData(tiers.value)
+  await saveTierData([...tiers.value, ...unrankedTiers.value])
 })
 
 // 清理事件监听
@@ -216,8 +244,8 @@ onUnmounted(() => {
 })
 
 // 监听数据变化，自动保存
-watch(tiers, () => {
-  saveTierData(tiers.value)
+watch([tiers, unrankedTiers], async () => {
+  await saveTierData([...tiers.value, ...unrankedTiers.value])
 }, { deep: true })
 
 function handleAddItem(tierId: string, rowId: string, index: number) {
@@ -347,7 +375,7 @@ function handleMoveItem(data: {
     const targetIndex = Math.min(data.toIndex, toRow.items.length)
     toRow.items.splice(targetIndex, 0, itemToMove)
     
-    saveTierData(tiers.value)
+    saveTierData([...tiers.value, ...unrankedTiers.value])
   }
 }
 
@@ -361,7 +389,7 @@ function handleReorder(tierId: string, rowId: string, newItems: AnimeItem[]) {
   if (!row) return
   
   row.items = newItems
-  saveTierData(tiers.value)
+  saveTierData([...tiers.value, ...unrankedTiers.value])
 }
 
 function handleEditItem(tierId: string, rowId: string, item: AnimeItem, index: number, isLongPress?: boolean) {
@@ -381,7 +409,7 @@ function handleSaveEditItem(updatedItem: AnimeItem) {
       const row = tier.rows.find(r => r.id === currentRowId.value)
       if (row) {
         row.items[currentIndex.value] = updatedItem
-        saveTierData(tiers.value)
+        saveTierData([...tiers.value, ...unrankedTiers.value])
       }
     }
   }
@@ -458,7 +486,7 @@ function handleUpdateConfigs(newConfigs: TierConfig[]) {
   tiers.value = newTiers
   
   // 保存更新后的数据
-  saveTierData(tiers.value)
+  saveTierData([...tiers.value, ...unrankedTiers.value])
   
   // 等待 DOM 更新后重新计算等级块宽度
   nextTick(() => {
@@ -485,10 +513,10 @@ function handleUpdateExportScale(scale: number) {
   exportScale.value = scale
 }
 
-function handleClearAll() {
+async function handleClearAll() {
   try {
     // 只清空作品数据和标题，保留所有设置
-    clearItemsAndTitle()
+    await clearItemsAndTitle()
     
     // 重置 tiers 为默认结构（清空所有作品）
     tiers.value = tierConfigs.value.map(config => ({
@@ -498,7 +526,7 @@ function handleClearAll() {
         items: [],
       }],
     }))
-    saveTierData(tiers.value)
+    await saveTierData([...tiers.value, ...unrankedTiers.value])
     
     // 清空备选框
 
@@ -568,7 +596,7 @@ function handleResetSettings() {
       return aOrder - bOrder
     })
     
-    saveTierData(tiers.value)
+    saveTierData([...tiers.value, ...unrankedTiers.value])
     
     // 重置成功，刷新设置页面内容让用户注意到重置已完成
     if (showConfig.value) {
@@ -639,9 +667,9 @@ watch(title, (newTitle) => {
 })
 
 // 导出数据（JSON）
-function handleExportJSON() {
+async function handleExportJSON() {
   try {
-    const data = exportAllData()
+    const data = await exportAllData()
     const jsonStr = JSON.stringify(data, null, 2)
     const blob = new Blob([jsonStr], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -700,7 +728,7 @@ function handleFileImport(e: Event) {
   if (!file) return
   
   const reader = new FileReader()
-  reader.onload = (event) => {
+  reader.onload = async (event) => {
     try {
       const jsonStr = event.target?.result as string
       const data: ExportData = JSON.parse(jsonStr)
@@ -713,12 +741,27 @@ function handleFileImport(e: Event) {
       
       // 确认导入
       if (confirm('导入数据将覆盖当前所有数据，是否继续？')) {
-        const result = importAllData(data)
+        const result = await importAllData(data)
         if (result.success) {
           // 重新加载数据
           title.value = loadTitle()
           tierConfigs.value = loadTierConfigs()
-          tiers.value = loadTierData()
+          tiers.value = await loadTierData()
+          
+          // Hydration
+          tiers.value.forEach(tier => {
+            tier.rows.forEach(row => {
+              row.items.forEach(item => {
+                if (item.image instanceof Blob) {
+                  item._blob = item.image
+                  item.image = URL.createObjectURL(item.image)
+                }
+                if (item.originalImage instanceof Blob) {
+                  item.originalImage = URL.createObjectURL(item.originalImage)
+                }
+              })
+            })
+          })
           
           // 同步数据
           const configIds = new Set(tierConfigs.value.map(c => c.id))
@@ -768,6 +811,7 @@ function handleFileImport(e: Event) {
 }
 
 // 保存为高清图片
+
 // 保存为高清图片（极速版：移除Base64转换，使用CSS逻辑）
 async function handleExportImage() {
   if (!appContentRef.value) {

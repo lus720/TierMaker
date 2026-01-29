@@ -456,31 +456,24 @@ function processFile(file: File): Promise<AnimeItem | null> {
       return
     }
     
-    // 读取文件并转换为 base64
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const result = e.target?.result as string
-      
-      // 使用文件名（去掉扩展名）作为作品名
-      const fileName = file.name.replace(/\.[^/.]+$/, '')
-      
-      // 生成唯一的 ID
-      const itemId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-      
-      const anime: AnimeItem = {
-        id: itemId,
-        name: fileName || '未命名作品',
-        image: result,
-        originalImage: result,
-      }
-      
-      resolve(anime)
+    // 使用文件名（去掉扩展名）作为作品名
+    const fileName = file.name.replace(/\.[^/.]+$/, '')
+    
+    // 生成唯一的 ID
+    const itemId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    
+    // 使用 ObjectURL 而不是 Base64
+    const blobUrl = URL.createObjectURL(file)
+    
+    const anime: AnimeItem = {
+      id: itemId,
+      name: fileName || '未命名作品',
+      image: blobUrl,
+      originalImage: blobUrl,
+      _blob: file, // 关键：保存 Blob 对象以便持久化
     }
-    reader.onerror = () => {
-      console.error('图片读取失败')
-      resolve(null)
-    }
-    reader.readAsDataURL(file)
+    
+    resolve(anime)
   })
 }
 

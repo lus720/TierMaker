@@ -1,4 +1,7 @@
-import type { Tier, TierConfig } from '../types'
+import type { Tier, TierConfig, AnimeItem } from '../types'
+import db from './db'
+import { toRaw } from 'vue'
+import { getDefaultTiers, getSetting } from './configManager'
 
 const STORAGE_KEY = 'tier-list-data'
 const TIER_CONFIG_KEY = 'tier-config'
@@ -10,33 +13,145 @@ const THEME_KEY = 'theme-preference'
 const HIDE_ITEM_NAMES_KEY = 'hide-item-names'
 const EXPORT_SCALE_KEY = 'export-scale'
 
-import { getDefaultTiers, getSetting } from './configManager'
-
 /**
  * 默认评分等级配置
- * 从 config.yaml 获取
  */
 export const DEFAULT_TIER_CONFIGS = getDefaultTiers()
 
 /**
- * 保存 Tier 数据到本地存储
+ * Helper: Convert DataURL to Blob
  */
-export function saveTierData(tiers: Tier[]): void {
+async function dataURLToBlob(dataURL: string): Promise<Blob> {
+  const res = await fetch(dataURL)
+  return await res.blob()
+}
+
+/**
+ * Migrate data from LocalStorage to IndexedDB
+ */
+export async function migrateFromLocalStorage(): Promise<void> {
+  const raw = localStorage.getItem(STORAGE_KEY)
+  if (!raw) return
+
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tiers))
+    console.log('[Migration] Starting migration from LocalStorage to IndexedDB...')
+    const tiers: Tier[] = JSON.parse(raw)
+    let convertedCount = 0
+
+    for (const tier of tiers) {
+      for (const row of tier.rows) {
+        for (const item of row.items) {
+          // Convert 'image' if it's a base64 string
+          if (typeof item.image === 'string' && item.image.startsWith('data:')) {
+             item.image = await dataURLToBlob(item.image)
+             convertedCount++
+          }
+          // Convert 'originalImage' if it's a base64 string
+          if (typeof item.originalImage === 'string' && item.originalImage.startsWith('data:')) {
+             item.originalImage = await dataURLToBlob(item.originalImage)
+          }
+        }
+      }
+    }
+
+    await db.setItem(STORAGE_KEY, tiers)
+    localStorage.removeItem(STORAGE_KEY)
+    console.log(`[Migration] Success! Converted ${convertedCount} images.`)
+  } catch (error) {
+    console.error('[Migration] Failed:', error)
+  }
+}
+
+/**
+ * 保存 Tier 数据到 IndexedDB (Async)
+ * Saves the _blob data as 'image' if present, ensuring we persist binary data not blob URLs
+ */
+export async function saveTierData(tiers: Tier[]): Promise<void> {
+  try {
+    const dataToSave = tiers.map(t => {
+      const rawTier = toRaw(t)
+      return {
+        ...rawTier,
+        rows: rawTier.rows.map(r => {
+          const rawRow = toRaw(r)
+          return {
+            ...rawRow,
+            items: rawRow.items.map(i => {
+              const rawItem = toRaw(i)
+              // Clone item to avoid mutating runtime state
+              const saveItem = { ...rawItem }
+              
+              // If we have a cached blob, save ONLY that as the image source
+              if (saveItem._blob && toRaw(saveItem._blob) instanceof Blob) {
+                saveItem.image = toRaw(saveItem._blob)
+              }
+               
+              // Remove runtime-only field before saving (optional, but cleaner)
+              if ('_blob' in saveItem) {
+                delete saveItem._blob
+              }
+              
+              return saveItem
+            })
+          }
+        })
+      }
+    })
+
+    // Verify Blob count (Optional debug, can be removed or kept as low-noise log)
+    // console.log(`[Storage] Saving ${dataToSave.length} tiers.`)
+
+    await db.setItem(STORAGE_KEY, dataToSave)
   } catch (error) {
     console.error('保存数据失败:', error)
   }
 }
 
 /**
- * 从本地存储加载 Tier 数据
+ * 从 IndexedDB 加载 Tier 数据 (Async)
  */
-export function loadTierData(): Tier[] {
+export async function loadTierData(): Promise<Tier[]> {
   try {
-    const data = localStorage.getItem(STORAGE_KEY)
+    // Check for migration first
+    if (localStorage.getItem(STORAGE_KEY)) {
+       await migrateFromLocalStorage()
+    }
+
+    const data = await db.getItem<Tier[]>(STORAGE_KEY)
+    
     if (data) {
-      return JSON.parse(data)
+      // Auto-repair: Check for lingering Base64 strings and convert them to Blobs
+      // This handles cases where data was saved as strings (e.g. before migration or via buggy edit modal)
+      let needsSave = false
+      for (const tier of data) {
+        for (const row of tier.rows) {
+          for (const item of row.items) {
+             if (typeof item.image === 'string' && item.image.startsWith('data:')) {
+                 try {
+                   item.image = await dataURLToBlob(item.image)
+                   needsSave = true
+                 } catch (e) {
+                   console.error('Failed to convert image blob', e)
+                 }
+             }
+             if (typeof item.originalImage === 'string' && item.originalImage.startsWith('data:')) {
+                 try {
+                    item.originalImage = await dataURLToBlob(item.originalImage)
+                    needsSave = true
+                 } catch (e) {
+                    console.error('Failed to convert originalImage blob', e)
+                 }
+             }
+          }
+        }
+      }
+      
+      if (needsSave) {
+         console.log('[Storage] Auto-repaired Base64 data to Blobs')
+         await db.setItem(STORAGE_KEY, data)
+      }
+
+      return data
     }
   } catch (error) {
     console.error('加载数据失败:', error)
@@ -53,7 +168,7 @@ export function loadTierData(): Tier[] {
 }
 
 /**
- * 保存评分等级配置
+ * 保存评分等级配置 (Keep LocalStorage)
  */
 export function saveTierConfigs(configs: TierConfig[]): void {
   try {
@@ -64,14 +179,13 @@ export function saveTierConfigs(configs: TierConfig[]): void {
 }
 
 /**
- * 加载评分等级配置
+ * 加载评分等级配置 (Keep LocalStorage)
  */
 export function loadTierConfigs(): TierConfig[] {
   try {
     const data = localStorage.getItem(TIER_CONFIG_KEY)
     if (data) {
       const configs: TierConfig[] = JSON.parse(data)
-      // 确保每个配置都有 fontSize（向后兼容）
       return configs.map(config => ({
         ...config,
         fontSize: config.fontSize ?? 32
@@ -80,7 +194,6 @@ export function loadTierConfigs(): TierConfig[] {
   } catch (error) {
     console.error('加载配置失败:', error)
   }
-
   return DEFAULT_TIER_CONFIGS
 }
 
@@ -101,7 +214,6 @@ export function saveBgmToken(token: string | null): void {
 
 /**
  * 加载用户自定义的 Bangumi Access Token
- * 返回 null 表示用户未设置自定义 Token
  */
 export function loadBgmToken(): string | null {
   try {
@@ -129,7 +241,6 @@ export function saveTitle(title: string): void {
 
 /**
  * 加载标题
- * 返回默认标题 "Tier List" 如果未设置
  */
 export function loadTitle(): string {
   try {
@@ -154,7 +265,6 @@ export function saveTitleFontSize(fontSize: number): void {
 
 /**
  * 加载标题字体大小
- * 返回默认字体大小 32 如果未设置
  */
 export function loadTitleFontSize(): number {
   try {
@@ -172,7 +282,7 @@ export function loadTitleFontSize(): number {
 }
 
 /**
- * 导出所有数据（包括 tiers、configs、title）
+ * Export interface
  */
 export interface ExportData {
   tiers: Tier[]
@@ -184,9 +294,54 @@ export interface ExportData {
   titleFontSize?: number
 }
 
-export function exportAllData(): ExportData {
+/**
+ * Blob to Base64 helper
+ */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      resolve(reader.result as string)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+/**
+ * 导出所有数据 (Async)
+ * 需要将 Blob 转换回 Base64 以便生成 JSON 文件
+ */
+export async function exportAllData(): Promise<ExportData> {
+  const tiers = await loadTierData()
+  
+  // Clone and convert Blobs to Base64
+  const tiersToExport = []
+  for (const tier of tiers) {
+    const newTier = { ...tier, rows: [] as any[] }
+    for (const row of tier.rows) {
+      const newRow = { ...row, items: [] as any[] }
+      for (const item of row.items) {
+         const newItem = { ...item }
+         if (newItem.image instanceof Blob) {
+             newItem.image = await blobToBase64(newItem.image)
+         }
+         if (newItem.originalImage instanceof Blob) {
+             newItem.originalImage = await blobToBase64(newItem.originalImage)
+         }
+         // Clean up internal url if exists (don't export blob urls)
+         if (newItem.url && newItem.url.startsWith('blob:')) {
+             delete newItem.url
+         }
+         newRow.items.push(newItem)
+      }
+      newTier.rows.push(newRow)
+    }
+    tiersToExport.push(newTier)
+  }
+
   return {
-    tiers: loadTierData(),
+    tiers: tiersToExport,
     tierConfigs: loadTierConfigs(),
     title: loadTitle(),
     titleFontSize: loadTitleFontSize(),
@@ -196,18 +351,33 @@ export function exportAllData(): ExportData {
 }
 
 /**
- * 导入数据
+ * 导入数据 (Async)
+ * Base64 -> Blob
  */
-export function importAllData(data: ExportData): {
+export async function importAllData(data: ExportData): Promise<{
   success: boolean
   error?: string
-} {
+}> {
   try {
     if (!data.tiers || !data.tierConfigs) {
       return { success: false, error: '数据格式不正确' }
     }
 
-    saveTierData(data.tiers)
+    // Convert Base64 back to Blobs
+    for (const tier of data.tiers) {
+        for (const row of tier.rows) {
+            for (const item of row.items) {
+               if (typeof item.image === 'string' && item.image.startsWith('data:')) {
+                   item.image = await dataURLToBlob(item.image)
+               }
+               if (typeof item.originalImage === 'string' && item.originalImage.startsWith('data:')) {
+                   item.originalImage = await dataURLToBlob(item.originalImage)
+               }
+            }
+        }
+    }
+
+    await saveTierData(data.tiers)
     saveTierConfigs(data.tierConfigs)
     if (data.title) {
       saveTitle(data.title)
@@ -238,26 +408,20 @@ export function saveLastSearchSource(source: string): void {
 
 /**
  * 加载上次使用的搜索源
- * 返回默认值 'bangumi' 如果未设置
  */
 export function loadLastSearchSource(): string {
   try {
     const source = localStorage.getItem(LAST_SEARCH_SOURCE_KEY)
-    // 验证是否为有效的搜索源
-    const validSources = ['bangumi', 'character', 'vndb']
+    const validSources = ['bangumi', 'character', 'vndb', 'local']
     if (source && validSources.includes(source)) {
       return source
     }
   } catch (error) {
     console.error('加载搜索源失败:', error)
   }
-  return 'bangumi' // 默认值
+  return 'bangumi'
 }
 
-/**
- * 保存主题偏好设置
- * @param theme 'light' | 'dark' | 'auto' (auto 表示跟随系统)
- */
 export function saveThemePreference(theme: 'light' | 'dark' | 'auto'): void {
   try {
     localStorage.setItem(THEME_KEY, theme)
@@ -266,10 +430,6 @@ export function saveThemePreference(theme: 'light' | 'dark' | 'auto'): void {
   }
 }
 
-/**
- * 加载主题偏好设置
- * 返回 'auto' 如果未设置（默认跟随系统）
- */
 export function loadThemePreference(): 'light' | 'dark' | 'auto' {
   try {
     const theme = localStorage.getItem(THEME_KEY)
@@ -282,9 +442,6 @@ export function loadThemePreference(): 'light' | 'dark' | 'auto' {
   return getSetting('theme') || 'auto'
 }
 
-/**
- * 保存隐藏作品名设置
- */
 export function saveHideItemNames(hide: boolean): void {
   try {
     localStorage.setItem(HIDE_ITEM_NAMES_KEY, JSON.stringify(hide))
@@ -293,9 +450,6 @@ export function saveHideItemNames(hide: boolean): void {
   }
 }
 
-/**
- * 加载隐藏作品名设置
- */
 export function loadHideItemNames(): boolean {
   try {
     const saved = localStorage.getItem(HIDE_ITEM_NAMES_KEY)
@@ -308,12 +462,8 @@ export function loadHideItemNames(): boolean {
   return getSetting('hide-item-names') ?? false
 }
 
-/**
- * 保存导出倍率设置
- */
 export function saveExportScale(scale: number): void {
   try {
-    // 限制范围在 1-6 之间，只支持整数
     const validScale = Math.max(1, Math.min(6, Math.round(scale)))
     localStorage.setItem(EXPORT_SCALE_KEY, validScale.toString())
   } catch (error) {
@@ -321,10 +471,6 @@ export function saveExportScale(scale: number): void {
   }
 }
 
-/**
- * 加载导出倍率设置
- * 返回默认值 4 如果未设置
- */
 export function loadExportScale(): number {
   try {
     const saved = localStorage.getItem(EXPORT_SCALE_KEY)
@@ -341,65 +487,30 @@ export function loadExportScale(): number {
 }
 
 /**
- * 清空作品数据和标题（保留设置）
+ * 清空作品数据和标题 (Async)
  */
-export function clearItemsAndTitle(): void {
+export async function clearItemsAndTitle(): Promise<void> {
   try {
-    localStorage.removeItem(STORAGE_KEY)
+    await db.removeItem(STORAGE_KEY)
+    localStorage.removeItem(STORAGE_KEY) // Ensure migration source is also gone
     localStorage.removeItem(TITLE_KEY)
     localStorage.removeItem(TITLE_FONT_SIZE_KEY)
     localStorage.removeItem(LAST_SEARCH_SOURCE_KEY)
-    // 注意：保留所有设置（主题、导出倍率、隐藏作品名、BGM Token、评分等级配置）
   } catch (error) {
     console.error('清空作品数据失败:', error)
     throw error
   }
 }
 
-/**
- * 重置所有设置（保留作品数据）
- */
 export function resetSettings(): void {
   try {
-    // 重置标题字体大小
     saveTitleFontSize(getSetting('title-font-size') || 32)
-
-    // 重置主题
     saveThemePreference(getSetting('theme') || 'auto')
-
-    // 重置隐藏作品名
     saveHideItemNames(getSetting('hide-item-names') ?? false)
-
-    // 重置导出倍率
     saveExportScale(getSetting('export-scale') || 4)
-
-    // 重置评分等级配置
     saveTierConfigs(DEFAULT_TIER_CONFIGS)
-
-    // 注意：不重置标题，保留用户设置的标题
-    // 注意：不清空 BGM_TOKEN_KEY，因为这是用户配置
-    // 注意：不清空作品数据（STORAGE_KEY），只重置设置
   } catch (error) {
     console.error('重置设置失败:', error)
     throw error
   }
 }
-
-/**
- * 清空所有数据（包括作品、配置、标题等）
- * @deprecated 使用 clearItemsAndTitle() 代替，此函数保留用于向后兼容
- */
-export function clearAllData(): void {
-  try {
-    localStorage.removeItem(STORAGE_KEY)
-    localStorage.removeItem(TIER_CONFIG_KEY)
-    localStorage.removeItem(TITLE_KEY)
-    localStorage.removeItem(TITLE_FONT_SIZE_KEY)
-    localStorage.removeItem(LAST_SEARCH_SOURCE_KEY)
-    // 注意：不清空 BGM_TOKEN_KEY 和 THEME_KEY，因为这是用户配置，不是数据
-  } catch (error) {
-    console.error('清空数据失败:', error)
-    throw error
-  }
-}
-

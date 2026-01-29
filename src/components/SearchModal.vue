@@ -31,6 +31,7 @@ const mouseDownInside = ref(false)
 // 本地上传相关状态
 const showLocalUpload = ref(false)
 const uploadedImage = ref<string | null>(null)
+const uploadedBlob = ref<Blob | null>(null)
 const customTitle = ref('')
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
@@ -302,23 +303,16 @@ function processFile(file: File) {
     return
   }
   
-  // 读取文件并转换为 base64
-  const reader = new FileReader()
-  reader.onload = (e) => {
-    const result = e.target?.result as string
-    uploadedImage.value = result
-    error.value = ''
-    
-    // 如果没有自定义标题，使用文件名（去掉扩展名）
-    if (!customTitle.value.trim()) {
-      const fileName = file.name.replace(/\.[^/.]+$/, '')
-      customTitle.value = fileName
-    }
+  // 直接使用 Blob，不再转换为 base64
+  uploadedBlob.value = file
+  uploadedImage.value = URL.createObjectURL(file)
+  error.value = ''
+  
+  // 如果没有自定义标题，使用文件名（去掉扩展名）
+  if (!customTitle.value.trim()) {
+    const fileName = file.name.replace(/\.[^/.]+$/, '')
+    customTitle.value = fileName
   }
-  reader.onerror = () => {
-    error.value = '图片读取失败'
-  }
-  reader.readAsDataURL(file)
 }
 
 // 处理文件上传
@@ -375,6 +369,7 @@ function handleLocalUploadConfirm() {
     name: customTitle.value.trim(),
     image: uploadedImage.value,
     originalImage: uploadedImage.value,
+    _blob: uploadedBlob.value || undefined,
   }
   
   emit('select', anime)
@@ -389,7 +384,11 @@ function handleLocalUploadConfirm() {
 
 // 清除上传的图片
 function clearUploadedImage() {
+  if (uploadedImage.value) {
+    URL.revokeObjectURL(uploadedImage.value)
+  }
   uploadedImage.value = null
+  uploadedBlob.value = null
   customTitle.value = ''
   if (fileInputRef.value) {
     fileInputRef.value.value = ''
@@ -406,7 +405,11 @@ watch(apiSource, () => {
   
   // 切换到本地上传时，重置上传状态
   if (apiSource.value === 'local') {
+    if (uploadedImage.value) {
+       URL.revokeObjectURL(uploadedImage.value)
+    }
     uploadedImage.value = null
+    uploadedBlob.value = null
     customTitle.value = ''
     if (fileInputRef.value) {
       fileInputRef.value.value = ''

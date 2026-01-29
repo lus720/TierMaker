@@ -54,10 +54,17 @@ const imagePositionInfo = ref<{
 watch(() => props.item, (newItem) => {
   if (newItem) {
     name.value = newItem.name || ''
-    imageUrl.value = newItem.image || ''
+    
+    // Handle image type (string | Blob)
+    if (newItem.image instanceof Blob) {
+      imageUrl.value = URL.createObjectURL(newItem.image)
+    } else {
+      imageUrl.value = newItem.image || ''
+    }
+    
     customUrl.value = newItem.url || ''
     imageFile.value = null
-    imagePreview.value = newItem.image || ''
+    imagePreview.value = imageUrl.value
     // 如果已有自定义坐标，直接使用；否则初始化为 'auto'（会在 updatePreviewCrop 中计算默认位置）
     cropPosition.value = newItem.cropPosition || 'auto'
     // 更新预览图片的裁剪位置
@@ -388,12 +395,11 @@ function handleFileSelect(e: Event) {
       return
     }
     imageFile.value = file
-    // 创建预览
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      imagePreview.value = e.target?.result as string
+    // 创建预览 (Use Blob URL)
+    if (imagePreview.value && imagePreview.value.startsWith('blob:')) {
+       URL.revokeObjectURL(imagePreview.value)
     }
-    reader.readAsDataURL(file)
+    imagePreview.value = URL.createObjectURL(file)
   }
 }
 
@@ -427,7 +433,11 @@ function handleSave() {
     finalImageUrl = imagePreview.value
   } else if (!finalImageUrl) {
     // 如果用户清空了图片 URL 且没有上传新文件，使用原始默认封面图
-    finalImageUrl = originalImage || ''
+    if (originalImage instanceof Blob) {
+       finalImageUrl = URL.createObjectURL(originalImage)
+    } else {
+       finalImageUrl = originalImage || ''
+    }
   }
   
   if (!finalImageUrl) {
@@ -454,6 +464,7 @@ function handleSave() {
     originalUrl: originalUrl,
     originalImage: originalImage,
     cropPosition: finalCropPosition,
+    _blob: imageFile.value || props.item._blob, // Update blob if new file, else keep existing
   }
   
   emit('save', updatedItem)

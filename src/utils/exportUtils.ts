@@ -38,7 +38,7 @@ export async function processExportImages(
             const originalSrc = dataOriginalSrc || currentSrc
 
             // 替换为 CORS 代理 URL
-            if (originalSrc && !originalSrc.startsWith('data:') && !originalSrc.includes('wsrv.nl')) {
+            if (originalSrc && !originalSrc.startsWith('data:') && !originalSrc.startsWith('blob:') && !originalSrc.includes('wsrv.nl')) {
                 const proxyUrl = getCorsProxyUrlFn(originalSrc)
                 const isVndbImage = originalSrc.includes('vndb.org')
 
@@ -47,7 +47,7 @@ export async function processExportImages(
                 if (!isVndbImage || proxyUrl !== originalSrc) {
                     img.crossOrigin = 'anonymous'
                 }
-            } else if (originalSrc?.includes('wsrv.nl')) {
+            } else if (originalSrc?.includes('wsrv.nl') || originalSrc?.startsWith('blob:')) {
                 img.crossOrigin = 'anonymous'
             } else {
                 console.warn(`⚠️ 导出${exportType === 'pdf' ? ' PDF' : '图片'}时 URL 异常:`, { originalSrc, currentSrc: img.src, itemId })
