@@ -562,8 +562,8 @@ async function handleFileDrop(event: DragEvent) {
       >
         <img
           :key="`img-${item.id}-${JSON.stringify(item.cropPosition || 'auto')}`"
-          :src="item.image"
-          :data-original-src="item.image"
+          :src="item.image as string"
+          :data-original-src="item.image as string"
           :data-item-id="item.id || ''"
           :alt="item.name || ''"
           class="item-image"
