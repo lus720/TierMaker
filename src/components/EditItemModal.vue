@@ -484,28 +484,73 @@ function isInsideModalContent(x: number, y: number): boolean {
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
 }
 
+const wasMouseDownOnModal = ref(false)
+
 function handleMouseDown(event: MouseEvent) {
   // 如果点击的是遮罩框，不处理（让遮罩框自己处理）
   const target = event.target as HTMLElement
   if (target && target.classList.contains('image-preview-mask')) {
     return
   }
-  mouseDownInside.value = isInsideModalContent(event.clientX, event.clientY)
+  const inside = isInsideModalContent(event.clientX, event.clientY)
+  console.log('[EditItemModal] MouseDown', {
+    clientX: event.clientX,
+    clientY: event.clientY,
+    inside,
+    target: target?.className
+  })
+  mouseDownInside.value = inside
+  wasMouseDownOnModal.value = true
 }
 
 function handleMouseUp(event: MouseEvent) {
-  // 如果是长按触发的编辑，且还没有处理过mouseup，绝对不触发退出
+  console.log('[EditItemModal] MouseUp Start', {
+    clientX: event.clientX,
+    clientY: event.clientY,
+    isLongPressTriggered: props.isLongPressTriggered,
+    hasHandledLongPressMouseUp: hasHandledLongPressMouseUp.value,
+    isDraggingMask: isDraggingMask.value,
+    mouseDownInside: mouseDownInside.value,
+    wasMouseDownOnModal: wasMouseDownOnModal.value
+  })
+
+  // 如果是长按触发的编辑，且还没有处理过mouseup
   if (props.isLongPressTriggered && !hasHandledLongPressMouseUp.value) {
-    mouseDownInside.value = false
-    hasHandledLongPressMouseUp.value = true
+    // 只有当这次 MouseUp 没有对应的 MouseDown 时（说明是长按的释放），才忽略
+    if (!wasMouseDownOnModal.value) {
+        console.log('[EditItemModal] Ignoring MouseUp (Long Press First Release - No MouseDown observed)')
+        mouseDownInside.value = false
+        hasHandledLongPressMouseUp.value = true
+        wasMouseDownOnModal.value = false
+        return
+    } else {
+        console.log('[EditItemModal] Processing MouseUp (Long Press Triggered but MouseDown observed - strictly a new click)')
+        // 既然观察到了 MouseDown，说明用户在 Modal 打开后点击了一次
+        // 这不应该是长按的结尾，而是一次新的交互
+        // 因此我们要让它通过，去执行后面的 closing check
+        hasHandledLongPressMouseUp.value = true // 标记长按逻辑已结束
+    }
+  }
+
+  // 如果正在拖动遮罩框，不处理退出
+  if (isDraggingMask.value) {
+    console.log('[EditItemModal] Ignoring MouseUp (Dragging Mask)')
     return
   }
   
   const mouseUpInside = isInsideModalContent(event.clientX, event.clientY)
+  console.log('[EditItemModal] MouseUp Check', {
+    mouseDownInside: mouseDownInside.value,
+    mouseUpInside,
+    shouldClose: !mouseDownInside.value && !mouseUpInside
+  })
+
   if (!mouseDownInside.value && !mouseUpInside) {
+    console.log('[EditItemModal] Closing Modal')
     emit('close')
   }
   mouseDownInside.value = false
+  wasMouseDownOnModal.value = false
 }
 
 // 拖动遮罩框相关函数

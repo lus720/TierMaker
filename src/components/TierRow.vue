@@ -574,6 +574,23 @@ async function handleFileDrop(event: DragEvent) {
           @load="handleImageLoad"
           :title="getItemUrl(item) ? '双击或 Ctrl+点击或右键点击跳转到详情页' : ''"
         />
+        <!-- 长按加载条 (圆形) - 移到图片容器内 -->
+        <div 
+          v-if="pressingItemId === item.id" 
+          class="long-press-indicator-circle"
+        >
+          <svg viewBox="0 0 40 40" class="progress-ring">
+            <circle
+              class="progress-ring-circle"
+              stroke="white"
+              stroke-width="2"
+              fill="transparent"
+              r="12"
+              cx="20"
+              cy="20"
+            />
+          </svg>
+        </div>
       </div>
       <div v-else class="item-placeholder">
         <span class="placeholder-text">+</span>
@@ -589,23 +606,7 @@ async function handleFileDrop(event: DragEvent) {
         ×
       </button>
       
-      <!-- 长按加载条 (圆形) -->
-      <div 
-        v-if="pressingItemId === item.id" 
-        class="long-press-indicator-circle"
-      >
-        <svg viewBox="0 0 40 40" class="progress-ring">
-          <circle
-            class="progress-ring-circle"
-            stroke="white"
-            stroke-width="4"
-            fill="transparent"
-            r="16"
-            cx="20"
-            cy="20"
-          />
-        </svg>
-      </div>
+
     </div>
   </div>
 </template>
@@ -744,6 +745,7 @@ async function handleFileDrop(event: DragEvent) {
   width: var(--size-image-width, 100px); /* 固定宽度 */
   /* 如果设置了 aspect-ratio，优先使用它控制比例 */
   height: var(--size-image-height, auto);
+  position: relative; /* Add relative position for absolute children */
   aspect-ratio: var(--size-image-aspect-ratio, auto);
   overflow: hidden;
   display: flex;
