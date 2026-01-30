@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import type { TierConfig } from '../types'
-import { getSetting } from '../utils/configManager'
+import { getSetting, getSize, updateSizes, saveLocalConfig } from '../utils/configManager'
 import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadThemePreference, saveThemePreference, loadHideItemNames, saveHideItemNames, loadExportScale, saveExportScale, DEFAULT_TIER_CONFIGS } from '../utils/storage'
 
 const props = defineProps<{
@@ -24,9 +24,14 @@ const titleFontSize = ref<number>(32)
 const themePreference = ref<'light' | 'dark' | 'auto'>('auto')
 const hideItemNames = ref<boolean>(false)
 const exportScale = ref<number>(4)
+const compactMode = ref<boolean>(false)
 const inputValues = ref<Record<number, string>>({})
 const modalContentRef = ref<HTMLElement | null>(null)
 const mouseDownInside = ref(false)
+
+const imageWidth = ref(100)
+const imageHeight = ref(133)
+const imageAspectRatio = ref(0.75)
 
 // 预设颜色选项
 const presetColors = [
@@ -69,6 +74,13 @@ onMounted(() => {
   titleFontSize.value = loadTitleFontSize()
   themePreference.value = loadThemePreference()
   hideItemNames.value = loadHideItemNames()
+  compactMode.value = getSetting('compact-mode') || false
+  
+  // 加载图片尺寸配置
+  imageWidth.value = getSize('image-width') || 100
+  imageAspectRatio.value = getSize('image-aspect-ratio') || 0.75
+  // 计算当前高度
+  imageHeight.value = Math.round(imageWidth.value / imageAspectRatio.value)
 })
 
 function addTier() {
@@ -156,6 +168,14 @@ function handleHideItemNamesChange() {
   emit('update-hide-item-names', hideItemNames.value)
 }
 
+function handleCompactModeChange() {
+  saveLocalConfig({
+    settings: {
+      'compact-mode': compactMode.value
+    }
+  })
+}
+
 function handleExportScaleInput(event: Event) {
   const target = event.target as HTMLInputElement
   let value = parseInt(target.value, 10)
@@ -199,7 +219,19 @@ function handleResetSettings() {
   exportScale.value = getSetting('export-scale') || 4
   titleFontSize.value = getSetting('title-font-size') || 32
   themePreference.value = getSetting('theme') || 'auto'
+  themePreference.value = getSetting('theme') || 'auto'
   hideItemNames.value = getSetting('hide-item-names') ?? false
+  compactMode.value = getSetting('compact-mode') || false
+  
+  // 重置图片尺寸（这里假设重置为默认值，或者应该调用 configManager 的清除？）
+  // 暂时重置为默认值 100px, 0.75 ratio
+  imageWidth.value = 100
+  imageAspectRatio.value = 0.75
+  imageHeight.value = 133
+  updateSizes({
+    'image-width': 100,
+    'image-aspect-ratio': 0.75
+  })
   
   // 不关闭弹窗，让用户看到重置后的值
   // configs 会通过 props 的 watch 自动更新
@@ -241,6 +273,35 @@ function handleTierIdBlur(config: TierConfig, index: number) {
   const newValue = inputValues.value[index] || config.id
   config.id = newValue
   config.label = newValue
+}
+
+function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
+  let w = imageWidth.value
+  let h = imageHeight.value
+  let r = imageAspectRatio.value
+  
+  if (w < 10) w = 10
+  if (h < 10) h = 10
+  if (r < 0.1) r = 0.1
+  
+  if (source === 'ratio') {
+    // 改变比例：保持宽度，重算高度
+    h = Math.round(w / r)
+    imageHeight.value = h
+  } else if (source === 'width') {
+    // 改变宽度：保持比例，重算高度
+    h = Math.round(w / r)
+    imageHeight.value = h
+  } else if (source === 'height') {
+    // 改变高度：保持比例，重算宽度 (Width = Height * Ratio)
+    w = Math.round(h * r)
+    imageWidth.value = w
+  }
+  
+  updateSizes({
+    'image-width': w,
+    'image-aspect-ratio': r
+  })
 }
 </script>
 
@@ -308,6 +369,66 @@ function handleTierIdBlur(config: TierConfig, index: number) {
             />
             <span>隐藏作品名</span>
           </label>
+        </div>
+        
+        <div class="config-item-row" style="margin-top: 15px;">
+          <label for="compact-mode" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+            <input
+              id="compact-mode"
+              v-model="compactMode"
+              type="checkbox"
+              class="config-checkbox"
+              @change="handleCompactModeChange"
+            />
+            <span>紧凑模式 (无间距)</span>
+          </label>
+        </div>
+      </div>
+      
+      <div class="config-section">
+        <h3 class="section-title">卡片尺寸设置</h3>
+        <div class="config-item-row">
+          <label for="image-aspect-ratio">宽高比 (Width/Height):</label>
+          <input
+            id="image-aspect-ratio"
+            v-model.number="imageAspectRatio"
+            type="number"
+            step="0.01"
+            min="0.1"
+            class="config-input"
+            style="max-width: 100px;"
+            @input="handleImageUtilChange('ratio')"
+          />
+          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">(如 0.75 即 3:4)</span>
+        </div>
+        
+        <div class="config-item-row" style="margin-top: 10px;">
+          <label for="image-width">图片宽度 (px):</label>
+          <input
+            id="image-width"
+            v-model.number="imageWidth"
+            type="number"
+            step="1"
+            min="10"
+            class="config-input"
+            style="max-width: 100px;"
+            @input="handleImageUtilChange('width')"
+          />
+        </div>
+        
+        <div class="config-item-row" style="margin-top: 10px;">
+          <label for="image-height">图片高度 (px):</label>
+          <input
+            id="image-height"
+            v-model.number="imageHeight"
+            type="number"
+            step="1"
+            min="10"
+            class="config-input"
+            style="max-width: 100px;"
+            @input="handleImageUtilChange('height')"
+          />
+          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">(根据宽高比自动匹配)</span>
         </div>
       </div>
       

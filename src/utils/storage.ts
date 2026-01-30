@@ -43,12 +43,12 @@ export async function migrateFromLocalStorage(): Promise<void> {
         for (const item of row.items) {
           // Convert 'image' if it's a base64 string
           if (typeof item.image === 'string' && item.image.startsWith('data:')) {
-             item.image = await dataURLToBlob(item.image)
-             convertedCount++
+            item.image = await dataURLToBlob(item.image)
+            convertedCount++
           }
           // Convert 'originalImage' if it's a base64 string
           if (typeof item.originalImage === 'string' && item.originalImage.startsWith('data:')) {
-             item.originalImage = await dataURLToBlob(item.originalImage)
+            item.originalImage = await dataURLToBlob(item.originalImage)
           }
         }
       }
@@ -80,17 +80,17 @@ export async function saveTierData(tiers: Tier[]): Promise<void> {
               const rawItem = toRaw(i)
               // Clone item to avoid mutating runtime state
               const saveItem = { ...rawItem }
-              
+
               // If we have a cached blob, save ONLY that as the image source
               if (saveItem._blob && toRaw(saveItem._blob) instanceof Blob) {
                 saveItem.image = toRaw(saveItem._blob)
               }
-               
+
               // Remove runtime-only field before saving (optional, but cleaner)
               if ('_blob' in saveItem) {
                 delete saveItem._blob
               }
-              
+
               return saveItem
             })
           }
@@ -114,11 +114,11 @@ export async function loadTierData(): Promise<Tier[]> {
   try {
     // Check for migration first
     if (localStorage.getItem(STORAGE_KEY)) {
-       await migrateFromLocalStorage()
+      await migrateFromLocalStorage()
     }
 
     const data = await db.getItem<Tier[]>(STORAGE_KEY)
-    
+
     if (data) {
       // Auto-repair: Check for lingering Base64 strings and convert them to Blobs
       // This handles cases where data was saved as strings (e.g. before migration or via buggy edit modal)
@@ -126,29 +126,29 @@ export async function loadTierData(): Promise<Tier[]> {
       for (const tier of data) {
         for (const row of tier.rows) {
           for (const item of row.items) {
-             if (typeof item.image === 'string' && item.image.startsWith('data:')) {
-                 try {
-                   item.image = await dataURLToBlob(item.image)
-                   needsSave = true
-                 } catch (e) {
-                   console.error('Failed to convert image blob', e)
-                 }
-             }
-             if (typeof item.originalImage === 'string' && item.originalImage.startsWith('data:')) {
-                 try {
-                    item.originalImage = await dataURLToBlob(item.originalImage)
-                    needsSave = true
-                 } catch (e) {
-                    console.error('Failed to convert originalImage blob', e)
-                 }
-             }
+            if (typeof item.image === 'string' && item.image.startsWith('data:')) {
+              try {
+                item.image = await dataURLToBlob(item.image)
+                needsSave = true
+              } catch (e) {
+                console.error('Failed to convert image blob', e)
+              }
+            }
+            if (typeof item.originalImage === 'string' && item.originalImage.startsWith('data:')) {
+              try {
+                item.originalImage = await dataURLToBlob(item.originalImage)
+                needsSave = true
+              } catch (e) {
+                console.error('Failed to convert originalImage blob', e)
+              }
+            }
           }
         }
       }
-      
+
       if (needsSave) {
-         console.log('[Storage] Auto-repaired Base64 data to Blobs')
-         await db.setItem(STORAGE_KEY, data)
+        console.log('[Storage] Auto-repaired Base64 data to Blobs')
+        await db.setItem(STORAGE_KEY, data)
       }
 
       return data
@@ -314,7 +314,7 @@ function blobToBase64(blob: Blob): Promise<string> {
  */
 export async function exportAllData(): Promise<ExportData> {
   const tiers = await loadTierData()
-  
+
   // Clone and convert Blobs to Base64
   const tiersToExport = []
   for (const tier of tiers) {
@@ -322,18 +322,18 @@ export async function exportAllData(): Promise<ExportData> {
     for (const row of tier.rows) {
       const newRow = { ...row, items: [] as any[] }
       for (const item of row.items) {
-         const newItem = { ...item }
-         if (newItem.image instanceof Blob) {
-             newItem.image = await blobToBase64(newItem.image)
-         }
-         if (newItem.originalImage instanceof Blob) {
-             newItem.originalImage = await blobToBase64(newItem.originalImage)
-         }
-         // Clean up internal url if exists (don't export blob urls)
-         if (newItem.url && newItem.url.startsWith('blob:')) {
-             delete newItem.url
-         }
-         newRow.items.push(newItem)
+        const newItem = { ...item }
+        if (newItem.image instanceof Blob) {
+          newItem.image = await blobToBase64(newItem.image)
+        }
+        if (newItem.originalImage instanceof Blob) {
+          newItem.originalImage = await blobToBase64(newItem.originalImage)
+        }
+        // Clean up internal url if exists (don't export blob urls)
+        if (newItem.url && newItem.url.startsWith('blob:')) {
+          delete newItem.url
+        }
+        newRow.items.push(newItem)
       }
       newTier.rows.push(newRow)
     }
@@ -365,16 +365,16 @@ export async function importAllData(data: ExportData): Promise<{
 
     // Convert Base64 back to Blobs
     for (const tier of data.tiers) {
-        for (const row of tier.rows) {
-            for (const item of row.items) {
-               if (typeof item.image === 'string' && item.image.startsWith('data:')) {
-                   item.image = await dataURLToBlob(item.image)
-               }
-               if (typeof item.originalImage === 'string' && item.originalImage.startsWith('data:')) {
-                   item.originalImage = await dataURLToBlob(item.originalImage)
-               }
-            }
+      for (const row of tier.rows) {
+        for (const item of row.items) {
+          if (typeof item.image === 'string' && item.image.startsWith('data:')) {
+            item.image = await dataURLToBlob(item.image)
+          }
+          if (typeof item.originalImage === 'string' && item.originalImage.startsWith('data:')) {
+            item.originalImage = await dataURLToBlob(item.originalImage)
+          }
         }
+      }
     }
 
     await saveTierData(data.tiers)

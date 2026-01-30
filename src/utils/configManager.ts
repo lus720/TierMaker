@@ -15,7 +15,76 @@ interface ConfigData {
 
 const LOCAL_CONFIG_KEY = 'tier-maker-local-config-yaml'
 
+
+
 let configCache: ConfigData | null = null
+
+/**
+ * 强制刷新配置缓存
+ */
+export function refreshConfig(): void {
+    configCache = null
+    parseConfig()
+    initConfigStyles()
+}
+
+/**
+ * 清除本地配置覆盖
+ */
+export function clearLocalConfig(): void {
+    localStorage.removeItem(LOCAL_CONFIG_KEY)
+    refreshConfig()
+}
+
+/**
+ * 保存本地配置覆盖
+ */
+export function saveLocalConfig(config: Partial<ConfigData>): void {
+    try {
+        // 获取现有的本地配置
+        let currentLocal: Partial<ConfigData> = {}
+        const localYaml = localStorage.getItem(LOCAL_CONFIG_KEY)
+        if (localYaml) {
+            currentLocal = parse(localYaml) as Partial<ConfigData> || {}
+        }
+
+        // 允许保存的字段白名单 (只允许用户在 UI 上调整的参数)
+        const ALLOWED_SIZE_KEYS = ['image-width', 'image-height', 'image-aspect-ratio']
+
+        // 过滤 config.sizes，只保留白名单内的 key
+        const safeSizes: Record<string, any> = {}
+        if (config.sizes) {
+            Object.keys(config.sizes).forEach(key => {
+                if (ALLOWED_SIZE_KEYS.includes(key)) {
+                    safeSizes[key] = config.sizes![key]
+                }
+            })
+        }
+
+        // 深度合并
+        const newConfig = {
+            ...currentLocal,
+            ...config,
+            sizes: { ...(currentLocal.sizes || {}), ...safeSizes },
+            settings: { ...(currentLocal.settings || {}), ...(config.settings || {}) }
+        }
+
+        // 转换为 YAML 字符串 (简化处理为 JSON)
+        localStorage.setItem(LOCAL_CONFIG_KEY, JSON.stringify(newConfig))
+
+        // 刷新缓存和样式
+        refreshConfig()
+    } catch (e) {
+        console.error('[ConfigManager] 保存本地配置失败', e)
+    }
+}
+
+/**
+ * 更新尺寸配置
+ */
+export function updateSizes(sizes: Record<string, any>): void {
+    saveLocalConfig({ sizes })
+}
 
 /**
  * 解析配置文件
@@ -44,6 +113,14 @@ function parseConfig(): ConfigData {
         sizes: { ...(userConfig.sizes || {}), ...(localConfig.sizes || {}) },
         settings: { ...(userConfig.settings || {}), ...(localConfig.settings || {}) },
         tiers: localConfig.tiers || userConfig.tiers || []
+    }
+
+    // 紧凑模式：强制覆盖间距为 0 (不保存到 storage/config，仅运行时生效)
+    if (mergedConfig.settings?.['compact-mode']) {
+        mergedConfig.sizes['row-padding'] = 0
+        mergedConfig.sizes['row-gap'] = 0
+        mergedConfig.sizes['container-padding-top'] = 0
+        mergedConfig.sizes['container-padding-bottom'] = 0
     }
 
     // 应用修补逻辑：如果有 aspect-ratio，自动计算相关高度

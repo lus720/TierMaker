@@ -9,7 +9,7 @@ sizes:
   # ==================== 图片相关 ====================
   image-width: 100
   image-height: 133
-  image-aspect-ratio: 0.75  # 3:4 比例，用于裁剪逻辑
+  image-aspect-ratio: 0.75 # 3:4 比例，用于裁剪逻辑
   
   # ==================== 条目卡片 ====================
   item-width: 100
@@ -24,15 +24,15 @@ sizes:
   label-padding-x: 10
   
   # ==================== 行样式 ====================
-  row-min-height: 120
-  row-padding: 10
-  row-gap: 10
-  container-padding-top: 10    # 容器上边距
-  container-padding-bottom: 10 # 容器下边距
-  border-width-thin: 1
-  border-width-thick: 2
-  border-width-item-duplicate: 3
-  border-width-empty-item: 2
+  row-min-height: 120   # 行最小高度
+  row-padding: 10        # 行的左右内边距
+  row-gap: 10            # 物品卡片之间的间距
+  container-padding-top: 10    # 容器上内边距
+  container-padding-bottom: 10 # 容器下内边距
+  border-width-thin: 1   # 细边框宽度
+  border-width-thick: 2  # 粗边框宽度
+  border-width-item-duplicate: 3 # 重复物品高亮边框宽度
+  border-width-empty-item: 2 # 空白占位边框宽度
   
   # ==================== 占位符 ====================
   placeholder-font-size: 32
@@ -73,7 +73,8 @@ settings:
   title-font-size: 32
   theme: 'auto'          # light, dark, auto
   export-scale: 4        # 1-6
-  hide-item-names: false
+  hide-item-names: true  
+  compact-mode: true     # 紧凑模式（无间距）
 
 tiers:
   # ==================== 默认评分等级 ====================

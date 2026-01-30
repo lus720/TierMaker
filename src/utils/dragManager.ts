@@ -159,12 +159,10 @@ function findNearestGridPosition(
     // Total Width >= n * (itemWidth + gap) - gap
     // Total Width + gap >= n * (itemWidth + gap)
     // n = floor( (Width + gap) / (itemWidth + gap) )
-
-    // Config values
-    const gap = config.sizes['row-gap'] || 10
-    const paddingLeft = config.sizes['row-padding'] || 10
-    const paddingRight = config.sizes['row-padding'] || 10
-    const paddingTop = config.sizes['container-padding-top'] || 10
+    const gap = config.sizes['row-gap'] ?? 10
+    const paddingLeft = config.sizes['row-padding'] ?? 10
+    const paddingRight = config.sizes['row-padding'] ?? 10
+    const paddingTop = config.sizes['container-padding-top'] ?? 10
 
     const containerWidth = containerRect.width
     const availableWidth = containerWidth - paddingLeft - paddingRight

@@ -238,11 +238,7 @@ watch(
   border-top: none;
 }
 
-/* 当隐藏作品名时，缩短行间距 */
-.tier-group:has(.tier-item.hide-name) .tier-row-wrapper {
-  border-top-width: 0;
-  margin-top: -1px;
-}
+
 
 .tier-label {
   min-width: var(--size-label-min-width, 80px); /* 最小宽度 */
