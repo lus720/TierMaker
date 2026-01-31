@@ -54,13 +54,18 @@ function getCurrentThemeBackgroundColor(): string {
 // 使用CORS代理获取图片
 function getCorsProxyUrl(url: string): string {
   if (!url) return ''
-  if (url.includes('wsrv.nl')) return url
+  if (url.includes('wsrv.nl') || url.includes('i0.wp.com')) return url
   
   if (url.includes('vndb.org') || url.includes('t.vndb.org')) {
-    return url
+    // VNDB 不支持 wsrv.nl 代理，使用 Jetpack 代理作为替代
+    const proxyUrl = `https://i0.wp.com/${url.replace(/^https?:\/\//, '')}`
+    console.log(`[Export] VNDB image detected, using Jetpack proxy: ${url} -> ${proxyUrl}`)
+    return proxyUrl
   }
   
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=png`
+  const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=png`
+  console.log(`[Export] Using wsrv.nl proxy: ${url} -> ${proxyUrl}`)
+  return proxyUrl
 }
 
 // 智能裁剪图片

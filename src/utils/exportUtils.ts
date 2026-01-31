@@ -49,13 +49,23 @@ export async function processExportImages(
                 const proxyUrl = getCorsProxyUrlFn(originalSrc)
                 const isVndbImage = originalSrc.includes('vndb.org')
 
+                console.log(`[Export] Item ${itemId}: Processing image`, {
+                    originalSrc,
+                    proxyUrl,
+                    isVndbImage
+                })
+
                 // 核心修复: 先设置 crossOrigin，再设置 src
                 // VNDB 图片直接使用原图，不设置 crossOrigin
                 if (!isVndbImage || proxyUrl !== originalSrc) {
+                    console.log(`[Export] Item ${itemId}: Setting crossOrigin = anonymous`)
                     img.crossOrigin = 'anonymous'
+                } else {
+                    console.log(`[Export] Item ${itemId}: Skipping crossOrigin for VNDB/Same-origin`)
                 }
                 img.src = proxyUrl
-            } else if (originalSrc?.includes('wsrv.nl') || originalSrc?.startsWith('blob:')) {
+            } else if (originalSrc?.includes('wsrv.nl') || originalSrc?.includes('i0.wp.com') || originalSrc?.startsWith('blob:')) {
+                console.log(`[Export] Item ${itemId}: URL already proxied or is blob`, { originalSrc })
                 img.crossOrigin = 'anonymous'
             } else {
                 console.warn(`⚠️ 导出${exportType === 'pdf' ? ' PDF' : '图片'}时 URL 异常:`, { originalSrc, currentSrc: img.src, itemId })
@@ -64,6 +74,11 @@ export async function processExportImages(
             // 等待图片加载完成
             const waitForLoad = () => {
                 if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    console.log(`[Export] Item ${itemId}: Image loaded successfully`, {
+                        src: img.src,
+                        naturalWidth: img.naturalWidth,
+                        naturalHeight: img.naturalHeight
+                    })
                     // 核心修复: 图片加载完成后立即清除监听器，防止后续修改 src 导致死循环
                     img.onload = null
                     img.onerror = null
@@ -96,7 +111,10 @@ export async function processExportImages(
                     })
                 } else {
                     // 图片未加载完成，等待加载
-                    img.onload = waitForLoad
+                    img.onload = () => {
+                        console.log(`[Export] Item ${itemId}: Image onload triggered`)
+                        waitForLoad()
+                    }
                     img.onerror = () => {
                         console.error(`❌ 导出${exportType === 'pdf' ? ' PDF' : '图片'}时加载失败:`, { itemId, src: img.src, originalSrc })
                         resolve()
