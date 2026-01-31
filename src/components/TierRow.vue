@@ -3,6 +3,8 @@ import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { registerContainer, unregisterContainer, startDrag, cancelDrag } from '../utils/dragManager'
 import { getItemUrl } from '../utils/url'
 import { getSize, getConfig } from '../utils/configManager'
+import { generateUuid } from '../utils/storage'
+import { adaptCropToRatio, normalizeCropResolution } from '../utils/cropUtils'
 import type { TierRow, AnimeItem } from '../types'
 
 // ... (props definition remains same)
@@ -159,9 +161,73 @@ function handleItemClick(index: number) {
   }
 }
 
-function handleItemDelete(index: number, e: Event) {
-  e.stopPropagation()
-  emit('delete-item', index)
+function getImageStyle(item: AnimeItem) {
+  const containerWidth = getSize('image-width') || 100
+  const containerHeight = getSize('image-height') || 133
+  
+  // Default style (Cover or unmodified)
+  const baseStyle: any = {
+    width: `${containerWidth}px`,
+    height: `${containerHeight}px`,
+    objectFit: 'cover',
+    objectPosition: 'center',
+  }
+  
+  const crop = item.cropPosition
+  
+  // Custom Crop (Canvas replacement)
+  if (typeof crop === 'object' && crop !== null && 'sourceX' in crop) {
+     // Need natural dimensions to calculate scale
+     if (!item.naturalWidth || !item.naturalHeight) {
+        return {
+           ...baseStyle,
+           visibility: 'hidden', 
+        }
+     }
+     
+     const nw = item.naturalWidth
+     const nh = item.naturalHeight
+     
+     // 1. 获取目标参数
+     const currentTargetRatio = containerWidth / containerHeight
+     
+     // 2. 规范化分辨率 (处理高清保存/低清预览问题) -> 得到在当前 nw/nh 下的正确 crop
+     let effectiveCrop = normalizeCropResolution(crop as any, item.naturalWidth, nw)
+     
+     // 3. 动态适配当前宽高比 (处理尺寸设置变更问题) -> 得到 perfect crop for current view
+     effectiveCrop = adaptCropToRatio(effectiveCrop, currentTargetRatio, nw, nh)
+     
+     const { sourceX, sourceY, sourceWidth } = effectiveCrop
+     
+     // 4. 计算显示样式 (Css-based cropping)
+     const scale = containerWidth / sourceWidth
+     const finalWidth = nw * scale
+     const finalHeight = nh * scale
+     const offsetX = -sourceX * scale
+     const offsetY = -sourceY * scale
+     
+     return {
+        width: `${finalWidth}px`,
+        height: `${finalHeight}px`,
+        position: 'absolute',
+        left: `${offsetX}px`,
+        top: `${offsetY}px`,
+        objectFit: 'fill', 
+        maxWidth: 'none',
+        maxHeight: 'none'
+     }
+  }
+  
+  // Predefined String Positions
+  if (typeof crop === 'string' && crop !== 'auto') {
+     return {
+        ...baseStyle,
+        objectPosition: crop
+     }
+  }
+  
+  // Auto
+  return baseStyle
 }
 
 function handleImageLoad(event: Event) {
@@ -169,221 +235,30 @@ function handleImageLoad(event: Event) {
   
   const itemId = img.getAttribute('data-item-id')
   const item = itemId ? props.row.items.find(i => String(i.id) === String(itemId)) : null
-  const cropPosition = item?.cropPosition || 'auto'
   
-  
-  // 统一处理所有图片，使用相同的裁剪规则
-  // 目标宽高比 target = config.ratio OR width/height
-  const containerWidth = getSize('image-width') || 100
-  const containerHeight = getSize('image-height') || 133
-  const configRatio = getSize('image-aspect-ratio')
-  const targetAspectRatio = configRatio || (containerWidth / containerHeight)
-  const naturalAspectRatio = img.naturalWidth / img.naturalHeight
-  
-  // ✅ 如果已经是裁剪后的 dataURL，就不要再裁一次（避免二次 load 循环）
-  if (img.dataset.cropped === '1') {
-    return
-  }
-  
-  // ✅ 如果裁剪位置是自定义坐标对象，使用 canvas 裁剪
-  if (typeof cropPosition === 'object' && cropPosition !== null && 'sourceX' in cropPosition) {
-    // ✅ 永远用原始 src 来裁剪（不要用 img.src，因为 img.src 会被改成 dataURL）
-    const originalSrc = img.getAttribute('data-original-src') || img.currentSrc || img.src
-    
-    // 使用 canvas 裁剪图片（需要重新加载图片以设置 crossOrigin）
-    cropImageWithCanvasForDisplay(originalSrc, cropPosition).then((dataUrl) => {
-      if (!dataUrl) return
-      
-      img.dataset.cropped = '1' // ✅ 打标记，防止二次裁剪
-      img.src = dataUrl // ✅ 替换为裁剪后的图
-      // 确保图片尺寸正确
-      img.style.width = `${containerWidth}px`
-      img.style.height = `${containerHeight}px`
-      img.style.objectFit = 'none' // 使用 none 模式，因为已经是裁剪后的图片
-    }).catch((error) => {
-      console.error('❌ 裁剪图片失败（可能是 CORS 问题）:', {
-        error,
-        imageSrc: originalSrc,
-        itemId,
-        itemName: item?.name
-      })
-      
-      // 如果裁剪失败，使用 object-position 回退方案
-      // ⚠️ 注意：这不是精确的，导出时可能仍会有偏差
-      img.style.objectFit = 'cover'
-      img.style.width = `${containerWidth}px`
-      img.style.height = `${containerHeight}px`
-      
-      // 根据自定义坐标计算 object-position（使用正确的 maxX/maxY 映射）
-      const { sourceX, sourceY, sourceWidth, sourceHeight } = cropPosition
-      const naturalWidth = img.naturalWidth
-      const naturalHeight = img.naturalHeight
-      
-      if (naturalWidth && naturalHeight) {
-        // ✅ 修复：使用可移动范围计算百分比，避免"向中心偏移"
-        // object-fit: cover 时，图片会被缩放，我们需要计算在缩放后的图片中，裁剪区域的位置
-        const configRatio = getSize('image-aspect-ratio')
-        const targetAspectRatio = configRatio || (containerWidth / containerHeight)
+  if (item) {
+     // Store natural dimensions permanently
+     item.naturalWidth = img.naturalWidth
+     item.naturalHeight = img.naturalHeight
+     
+     // If we are in 'auto' mode and want to smart-center based on aspect ratio:
+     const crop = item.cropPosition || 'auto'
+     if (crop === 'auto') {
+        const containerWidth = getSize('image-width') || 100
+        const containerHeight = getSize('image-height') || 133
+        const targetRatio = getSize('image-aspect-ratio') || (containerWidth / containerHeight)
+        const naturalRatio = img.naturalWidth / img.naturalHeight
         
-        // 计算图片在 cover 模式下的实际显示尺寸
-        let displayedWidth = naturalWidth
-        let displayedHeight = naturalHeight
-        let offsetX = 0
-        let offsetY = 0
-        
-        if (naturalWidth / naturalHeight > targetAspectRatio) {
-          // 图片较宽，高度填满，宽度超出
-          displayedHeight = containerHeight
-          displayedWidth = naturalWidth * (containerHeight / naturalHeight)
-          offsetX = (displayedWidth - containerWidth) / 2
+        if (naturalRatio > targetRatio) {
+           img.style.objectPosition = 'center center'
         } else {
-          // 图片较高，宽度填满，高度超出
-          displayedWidth = containerWidth
-          displayedHeight = naturalHeight * (containerWidth / naturalWidth)
-          offsetY = (displayedHeight - containerHeight) / 2
+           img.style.objectPosition = 'center top'
         }
-        
-        // 计算裁剪区域在缩放后图片中的位置
-        const scaleX = displayedWidth / naturalWidth
-        const scaleY = displayedHeight / naturalHeight
-        const scaledSourceX = sourceX * scaleX
-        const scaledSourceY = sourceY * scaleY
-        const scaledSourceWidth = sourceWidth * scaleX
-        const scaledSourceHeight = sourceHeight * scaleY
-        
-        // 计算裁剪区域中心点相对于缩放后图片的位置
-        const cropCenterX = scaledSourceX + scaledSourceWidth / 2
-        const cropCenterY = scaledSourceY + scaledSourceHeight / 2
-        
-        // 计算可移动范围
-        const maxX = Math.max(0, displayedWidth - containerWidth)
-        const maxY = Math.max(0, displayedHeight - containerHeight)
-        
-        // 计算百分比（相对于可移动范围）
-        const xPercent = maxX === 0 ? 50 : ((cropCenterX - containerWidth / 2) / maxX) * 100
-        const yPercent = maxY === 0 ? 50 : ((cropCenterY - containerHeight / 2) / maxY) * 100
-        
-        // 限制在 0-100% 范围内
-        const clampedXPercent = Math.max(0, Math.min(100, xPercent))
-        const clampedYPercent = Math.max(0, Math.min(100, yPercent))
-        
-        img.style.objectPosition = `${clampedXPercent}% ${clampedYPercent}%`
-        
-        console.warn('⚠️ 使用 object-position 回退方案（不精确，导出可能仍有偏差）:', { 
-          xPercent: clampedXPercent, 
-          yPercent: clampedYPercent,
-          originalXPercent: xPercent,
-          originalYPercent: yPercent,
-          cropCenterX,
-          cropCenterY,
-          displayedWidth,
-          displayedHeight,
-          maxX,
-          maxY,
-          naturalWidth,
-          naturalHeight,
-          sourceX,
-          sourceY,
-          sourceWidth,
-          sourceHeight
-        })
-      }
-    })
-    return
-  }
-  
-  // 统一使用 cover 模式
-  img.style.objectFit = 'cover'
-  img.style.width = `${containerWidth}px`
-  img.style.height = `${containerHeight}px`
-  
-  // 根据保存的裁剪位置或自动判断
-  if (cropPosition === 'auto') {
-    // 自动模式：根据宽高比设置不同的裁剪位置
-    if (naturalAspectRatio > targetAspectRatio) {
-      // s > 0.75：图片较宽，居中裁剪
-      img.style.objectPosition = 'center center'
-    } else {
-      // s < 0.75：图片较高，保留顶部
-      img.style.objectPosition = 'center top'
-    }
-  } else if (typeof cropPosition === 'string') {
-    // 使用保存的预设裁剪位置
-    img.style.objectPosition = cropPosition
+     }
   }
 }
 
-function getCorsProxyUrl(url: string): string {
-  if (!url) return ''
-  if (url.includes('wsrv.nl')) return url
-  if (url.includes('vndb.org') || url.includes('t.vndb.org')) {
-    return url
-  }
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=png`
-}
 
-// 使用 canvas 裁剪图片用于显示（自定义坐标）
-async function cropImageWithCanvasForDisplay(
-  imageSrc: string,
-  cropPosition: { sourceX: number; sourceY: number; sourceWidth: number; sourceHeight: number }
-): Promise<string | null> {
-  const { sourceX, sourceY, sourceWidth, sourceHeight } = cropPosition
-  const containerWidth = getSize('image-width') || 100
-  const containerHeight = getSize('image-height') || 133
-  // 注意：这里裁剪 canvas 的尺寸应当与显示尺寸一致，但也应该参考 aspect-ratio
-  // 为了简单起见，我们假设 width/height 已经正确配置匹配 aspect-ratio
-  
-  
-  return new Promise((resolve, reject) => {
-    // 创建新的 Image 对象，设置 crossOrigin 以避免 CORS 问题
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    
-    const proxyUrl = getCorsProxyUrl(imageSrc)
-    
-    img.onload = () => {
-      
-      try {
-        const canvas = document.createElement('canvas')
-        canvas.width = containerWidth
-        canvas.height = containerHeight
-        const ctx = canvas.getContext('2d')
-        
-        if (!ctx) {
-          reject(new Error('无法获取 canvas context'))
-          return
-        }
-        
-        ctx.imageSmoothingEnabled = true
-        ctx.imageSmoothingQuality = 'high'
-        
-        ctx.drawImage(
-          img,
-          Math.round(sourceX), Math.round(sourceY), Math.round(sourceWidth), Math.round(sourceHeight),
-          0, 0, containerWidth, containerHeight
-        )
-        
-        const dataUrl = canvas.toDataURL('image/png', 1.0)
-        resolve(dataUrl)
-      } catch (error) {
-        console.error('❌ 裁剪过程中出错:', error)
-        reject(error)
-      }
-    }
-    
-    img.onerror = (error) => {
-      console.error('❌ 图片加载失败（可能是 CORS 或网络问题）:', {
-        error,
-        originalUrl: imageSrc,
-        proxyUrl
-      })
-      reject(new Error('图片加载失败'))
-    }
-    
-    // 加载图片（使用 CORS 代理 URL）
-    img.src = proxyUrl
-  })
-}
 
 // 处理图片加载错误
 function handleImageError(event: Event) {
@@ -437,6 +312,13 @@ function handleImageClick(item: AnimeItem, e: MouseEvent) {
   }
 }
 
+function handleItemDelete(index: number, e: Event) {
+  e.stopPropagation()
+  emit('delete-item', index)
+}
+
+
+
 
 
 // 处理文件拖放
@@ -467,6 +349,7 @@ function processFile(file: File): Promise<AnimeItem | null> {
     
     const anime: AnimeItem = {
       id: itemId,
+      uuid: generateUuid(),
       name: fileName || '未命名作品',
       image: blobUrl,
       originalImage: blobUrl,
@@ -544,7 +427,7 @@ async function handleFileDrop(event: DragEvent) {
   >
     <div
       v-for="(item, index) in displayItems"
-      :key="`${item.id || 'empty'}-${index}`"
+      :key="item.uuid || 'empty-slot'"
       class="tier-item"
       :data-item-id="item.id || ''"
       :class="{ 
@@ -561,7 +444,7 @@ async function handleFileDrop(event: DragEvent) {
         class="item-image-container"
       >
         <img
-          :key="`img-${item.id}-${JSON.stringify(item.cropPosition || 'auto')}`"
+          :key="`img-${item.id}`"
           :src="item.image as string"
           :data-original-src="item.image as string"
           :data-item-id="item.id || ''"
@@ -573,6 +456,7 @@ async function handleFileDrop(event: DragEvent) {
           @error="handleImageError"
           @load="handleImageLoad"
           :title="getItemUrl(item) ? '双击或 Ctrl+点击或右键点击跳转到详情页' : ''"
+          :style="getImageStyle(item)"
         />
         <!-- 长按加载条 (圆形) - 移到图片容器内 -->
         <div 

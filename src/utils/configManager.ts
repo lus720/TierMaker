@@ -5,6 +5,7 @@
 
 import configYaml from '../../config.yaml?raw'
 import { parse } from 'yaml'
+import { ref } from 'vue'
 import type { TierConfig } from '../types'
 
 interface ConfigData {
@@ -15,7 +16,8 @@ interface ConfigData {
 
 const LOCAL_CONFIG_KEY = 'tier-maker-local-config-yaml'
 
-
+// Reactive signal for config changes
+const configVersion = ref(0)
 
 let configCache: ConfigData | null = null
 
@@ -26,6 +28,7 @@ export function refreshConfig(): void {
     configCache = null
     parseConfig()
     initConfigStyles()
+    configVersion.value++ // Trigger reactivity
 }
 
 /**
@@ -123,29 +126,32 @@ function parseConfig(): ConfigData {
         mergedConfig.sizes['container-padding-bottom'] = 0
     }
 
-    // 应用修补逻辑：如果有 aspect-ratio，自动计算相关高度
+    // Dynamic Evaluation: Recalculate derived sizes from Source of Truth
+    // image-width, image-aspect-ratio, item-name-height -> All other sizes
     if (mergedConfig.sizes && mergedConfig.sizes['image-aspect-ratio'] && mergedConfig.sizes['image-width']) {
-        const ratio = mergedConfig.sizes['image-aspect-ratio']
-        const width = mergedConfig.sizes['image-width']
-        // 默认高度 133 是基于 width 100 和 ratio 0.75 计算的
-        const oldHeight = mergedConfig.sizes['image-height'] || 133
-        const newHeight = width / ratio
+        const ratio = Number(mergedConfig.sizes['image-aspect-ratio'])
+        const width = Number(mergedConfig.sizes['image-width'])
+        const nameHeight = Number(mergedConfig.sizes['item-name-height'] || 40)
 
-        // 更新 image-height
-        mergedConfig.sizes['image-height'] = newHeight
+        // 1. Calculate Image Height strictly from formula
+        // Even if config.yaml has image-height, we overwrite it to ensure ratio consistency
+        const newImageHeight = width / ratio
+        mergedConfig.sizes['image-height'] = newImageHeight
 
-        // 更新相关依赖高度 (item-height = image-height + name-height)
-        const delta = newHeight - oldHeight
+        // 2. Sync item-width (Always same as image-width)
+        mergedConfig.sizes['item-width'] = width
 
-        // 只有当 delta 显著变化时才更新（避免浮点数误差）
-        if (Math.abs(delta) > 0.1) {
-            if (mergedConfig.sizes['item-height']) {
-                mergedConfig.sizes['item-height'] += delta
-            }
-            if (mergedConfig.sizes['item-height-hide-name']) {
-                mergedConfig.sizes['item-height-hide-name'] += delta
-            }
-        }
+        // 3. Sync item-height-hide-name (Always same as image-height)
+        mergedConfig.sizes['item-height-hide-name'] = newImageHeight
+
+        // 4. Calculate item-height (Image + Name)
+        mergedConfig.sizes['item-height'] = newImageHeight + nameHeight
+
+        console.log('[ConfigManager] Dynamically calculated sizes:', {
+            width, ratio, newImageHeight,
+            itemWidth: mergedConfig.sizes['item-width'],
+            itemHeight: mergedConfig.sizes['item-height']
+        })
     }
 
     configCache = mergedConfig
@@ -188,6 +194,10 @@ export function initConfigStyles(): void {
  * @returns 尺寸值（数字，单位为 px）
  */
 export function getSize(key: string): number {
+    // Register dependency for reactivity
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    configVersion.value
+
     const config = parseConfig()
     return config.sizes?.[key] ?? 0
 }
@@ -196,6 +206,8 @@ export function getSize(key: string): number {
  * 获取所有尺寸配置
  */
 export function getAllSizes(): Record<string, number> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    configVersion.value
     const config = parseConfig()
     return config.sizes ?? {}
 }
@@ -204,6 +216,8 @@ export function getAllSizes(): Record<string, number> {
  * 获取指定设置项
  */
 export function getSetting<T = any>(key: string): T {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    configVersion.value
     const config = parseConfig()
     return config.settings?.[key]
 }
@@ -212,11 +226,15 @@ export function getSetting<T = any>(key: string): T {
  * 获取所有设置项
  */
 export function getAllSettings(): Record<string, any> {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    configVersion.value
     const config = parseConfig()
     return config.settings ?? {}
 }
 
 export function getDefaultTiers(): TierConfig[] {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    configVersion.value
     const config = parseConfig()
     return config.tiers ?? []
 }
@@ -225,5 +243,7 @@ export function getDefaultTiers(): TierConfig[] {
  * 获取完整配置对象
  */
 export function getConfig(): ConfigData {
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    configVersion.value
     return parseConfig()
 }

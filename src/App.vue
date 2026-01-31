@@ -9,8 +9,9 @@ import EditItemModal from './components/EditItemModal.vue'
 
 import { getItemUrl } from './utils/url'
 import { processExportImages, processEmptySlots, configureExportStyles, hideExportUIElements, syncThemeToClonedDoc } from './utils/exportUtils'
-import { initConfigStyles } from './utils/configManager'
+import { initConfigStyles, getSize } from './utils/configManager'
 import type { Tier, AnimeItem, TierConfig, CropPosition } from './types'
+import { adaptCropToRatio, normalizeCropResolution } from './utils/cropUtils'
 import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, clearItemsAndTitle, resetSettings, loadThemePreference, loadHideItemNames, loadExportScale, DEFAULT_TIER_CONFIGS, type ExportData } from './utils/storage'
 
 const tiers = ref<Tier[]>([])
@@ -812,7 +813,8 @@ function handleFileImport(e: Event) {
 
 // 保存为高清图片
 
-// 保存为高清图片（极速版：移除Base64转换，使用CSS逻辑）
+// 保存为高清图片
+// 保存为高清图片
 async function handleExportImage() {
   if (!appContentRef.value) {
     alert('无法找到要导出的内容')
@@ -834,47 +836,65 @@ async function handleExportImage() {
     window.scrollTo(0, 0)
     await new Promise(resolve => setTimeout(resolve, 100))
     
+    // 1. 手动克隆 DOM (解决 html2canvas onclone 异步问题)
+    const originalNode = appContentRef.value as HTMLElement
+    // 深度克隆节点
+    const clonedNode = originalNode.cloneNode(true) as HTMLElement
+    
+    // 2. 将克隆节点挂载到离屏容器 (必须挂载才能加载图片)
+    // 创建一个隐藏的容器
+    const hiddenContainer = document.createElement('div')
+    hiddenContainer.style.position = 'fixed'
+    hiddenContainer.style.left = '-9999px' // 移出视口
+    // hiddenContainer.style.visibility = 'hidden' // 不要用 visibility:hidden，可能会导致某些计算问题
+    hiddenContainer.style.zIndex = '-1000'
+    hiddenContainer.style.width = originalNode.offsetWidth + 'px' // 保持原有宽度
+    hiddenContainer.appendChild(clonedNode)
+    document.body.appendChild(hiddenContainer)
+    
+    // 3. 处理克隆节点 (图片代理、裁剪、样式调整)
     const currentScale = exportScale.value // 使用用户设置的导出倍率
-    const canvas = await html2canvas(appContentRef.value, {
-      scale: currentScale, // 使用用户设置的倍率
-      useCORS: true, // <--- 核心：开启跨域，利用 wsrv.nl 的 Header
+    
+    // 同步主题
+    syncThemeToClonedDoc(hiddenContainer)
+    // 隐藏无关 UI (在 clone 上操作)
+    hideExportUIElements(hiddenContainer, { hideCandidates: true, hideUnranked: true })
+    // 处理 Empty Slots
+    processEmptySlots(hiddenContainer)
+    
+    // 异步处理图片：替换 proxy url, 等待加载, canvas 裁剪
+    // 这里我们可以放心地 await，不用担心 html2canvas 抢跑
+    await processExportImages(hiddenContainer, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'image')
+    
+    // 配置导出样式
+    const originalAppWidth = originalNode.offsetWidth || originalNode.scrollWidth
+    let computedTitleFontSize = 32
+    try {
+      const originalTitle = document.querySelector('.title') as HTMLElement
+      if (originalTitle) {
+        const computedStyle = window.getComputedStyle(originalTitle)
+        const parsedSize = parseFloat(computedStyle.fontSize)
+        if (!isNaN(parsedSize) && parsedSize > 0) {
+          computedTitleFontSize = parsedSize
+        }
+      }
+    } catch (e) {
+      console.warn('获取标题字体大小失败，使用默认值32px:', e)
+    }
+    configureExportStyles(hiddenContainer, { titleFontSize: computedTitleFontSize, originalAppWidth })
+
+    // 4. 调用 html2canvas 截图 (此时不需要再用 onclone)
+    const canvas = await html2canvas(clonedNode, {
+      scale: currentScale,
+      useCORS: true,
       allowTaint: false,
       logging: false,
       backgroundColor: getCurrentThemeBackgroundColor(),
-      imageTimeout: 15000, // 给予足够的加载时间
-      
-      onclone: async (clonedDoc) => {
-        // 1. 同步主题
-        syncThemeToClonedDoc(clonedDoc)
-        
-        // 2. 隐藏无关 UI
-        hideExportUIElements(clonedDoc, { hideCandidates: true, hideUnranked: true })
-        
-        // 3. 处理 Empty Slots
-        processEmptySlots(clonedDoc)
-        
-        // 4. 处理图片 (CORS 代理 + 裁剪)
-        await processExportImages(clonedDoc, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'image')
-        
-        // 5. 配置导出样式
-        const originalApp = appContentRef.value as HTMLElement
-        const originalAppWidth = originalApp.offsetWidth || originalApp.scrollWidth
-        let computedTitleFontSize = 32
-        try {
-          const originalTitle = document.querySelector('.title') as HTMLElement
-          if (originalTitle) {
-            const computedStyle = window.getComputedStyle(originalTitle)
-            const parsedSize = parseFloat(computedStyle.fontSize)
-            if (!isNaN(parsedSize) && parsedSize > 0) {
-              computedTitleFontSize = parsedSize
-            }
-          }
-        } catch (e) {
-          console.warn('获取标题字体大小失败，使用默认值32px:', e)
-        }
-        configureExportStyles(clonedDoc, { titleFontSize: computedTitleFontSize, originalAppWidth })
-      }
+      imageTimeout: 15000,
     })
+    
+    // 5. 清理 DOM
+    document.body.removeChild(hiddenContainer)
     
     // 恢复滚动
     window.scrollTo(originalScrollX, originalScrollY)
@@ -901,6 +921,9 @@ async function handleExportImage() {
   } catch (error) {
     console.error('导出图片失败:', error)
     alert('导出失败，请检查网络连接')
+    // 确保清理 DOM (如果有残留)
+    const containers = document.querySelectorAll('div[style*="left: -9999px"]')
+    containers.forEach(c => c.remove())
     isExportingImage.value = false
   }
 }
@@ -986,33 +1009,49 @@ async function handleExportPDF() {
       sum + tier.rows.reduce((rowSum, row) => rowSum + row.items.filter(item => item.id).length, 0), 0)
     
     // 使用 html2canvas 生成图片（极速版：使用CORS直连）
-    const currentScale = exportScale.value // 使用用户设置的导出倍率
-    const canvas = await html2canvas(appContentRef.value, {
-      scale: currentScale, // 使用用户设置的倍率
-      useCORS: true, // 开启CORS支持，利用wsrv.nl代理的CORS Header
+    // 1. 手动克隆 DOM (解决 html2canvas onclone 异步问题)
+    const originalNode = appContentRef.value as HTMLElement
+    const clonedNode = originalNode.cloneNode(true) as HTMLElement
+    
+    // 2. 将克隆节点挂载到离屏容器
+    const hiddenContainer = document.createElement('div')
+    hiddenContainer.style.position = 'fixed'
+    hiddenContainer.style.left = '-9999px'
+    hiddenContainer.style.zIndex = '-1000'
+    hiddenContainer.style.width = originalNode.offsetWidth + 'px'
+    hiddenContainer.appendChild(clonedNode)
+    document.body.appendChild(hiddenContainer)
+    
+    // 3. 处理克隆节点
+    const currentScale = exportScale.value
+    
+    // 同步主题
+    syncThemeToClonedDoc(hiddenContainer)
+    // 隐藏无关 UI
+    hideExportUIElements(hiddenContainer, { hideCandidates: true, hideUnranked: true })
+    // 处理 Empty Slots
+    processEmptySlots(hiddenContainer)
+    
+    // 异步处理图片
+    await processExportImages(hiddenContainer, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'pdf')
+    
+    // 配置导出样式
+    const originalApp = appContentRef.value as HTMLElement
+    const originalAppWidth = originalApp.offsetWidth || originalApp.scrollWidth
+    configureExportStyles(hiddenContainer, { titleFontSize: titleFontSize.value, originalAppWidth })
+
+    // 4. 调用 html2canvas 截图
+    const canvas = await html2canvas(clonedNode, {
+      scale: currentScale,
+      useCORS: true, 
       allowTaint: false,
       logging: false,
       backgroundColor: getCurrentThemeBackgroundColor(),
       imageTimeout: 15000,
-      onclone: async (clonedDoc) => {
-        // 1. 同步主题
-        syncThemeToClonedDoc(clonedDoc)
-        
-        // 2. 隐藏无关 UI
-        hideExportUIElements(clonedDoc, { hideCandidates: true, hideUnranked: true })
-        
-        // 3. 处理图片 (CORS 代理 + 裁剪)
-        await processExportImages(clonedDoc, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'pdf')
-        
-        // 4. 处理 Empty Slots
-        processEmptySlots(clonedDoc)
-        
-        // 5. 配置导出样式
-        const originalApp = appContentRef.value as HTMLElement
-        const originalAppWidth = originalApp.offsetWidth || originalApp.scrollWidth
-        configureExportStyles(clonedDoc, { titleFontSize: titleFontSize.value, originalAppWidth })
-      }
     })
+    
+    // 5. 清理 DOM
+    document.body.removeChild(hiddenContainer)
     
     // 恢复滚动位置
     window.scrollTo(originalScrollX, originalScrollY)
@@ -1066,6 +1105,10 @@ async function handleExportPDF() {
   } catch (error) {
     console.error('导出PDF失败:', error)
     alert('导出PDF失败：' + (error instanceof Error ? error.message : '未知错误'))
+    // 清理可能残留的 DOM
+    const containers = document.querySelectorAll('div[style*="left: -9999px"]')
+    containers.forEach(c => c.remove())
+
     isExportingPDF.value = false
   }
 }
@@ -1099,24 +1142,33 @@ function applySmartCropToImage(img: HTMLImageElement) {
     let cropPosition: CropPosition = 'auto'
     
     if (itemId) {
+      let found = false
       for (const tier of tiers.value) {
         for (const row of tier.rows) {
           const item = row.items.find(i => String(i.id) === String(itemId))
-          if (item && item.cropPosition) {
-            cropPosition = item.cropPosition
+          if (item) {
+            cropPosition = item.cropPosition || 'auto'
+            found = true
             break
           }
         }
-        if (cropPosition !== 'auto') break
+        if (found) break
       }
     }
     
     const ratio = img.naturalWidth / img.naturalHeight
     const targetRatio = 0.75
     
+    const width = getSize('image-width') || 100
+    const height = getSize('image-height') || 133
     img.style.objectFit = 'cover' // 确保填满
-    img.style.width = '100px'
-    img.style.height = '133px'
+    img.style.width = `${width}px`
+    img.style.height = `${height}px`
+    // Reset positioning styles from Custom Crop
+    img.style.position = 'static'
+    img.style.left = 'auto'
+    img.style.top = 'auto'
+    img.style.transform = 'none'
     
     // 根据保存的裁剪位置或自动判断
     if (cropPosition === 'auto') {
@@ -1150,25 +1202,17 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   let cropPosition: CropPosition = 'auto'
   
   if (itemId) {
+    let found = false
     for (const tier of tiers.value) {
       for (const row of tier.rows) {
         const item = row.items.find(i => String(i.id) === String(itemId))
-        if (item && item.cropPosition) {
-          cropPosition = item.cropPosition
+        if (item) {
+          cropPosition = item.cropPosition || 'auto'
+          found = true
           break
         }
       }
-      if (cropPosition !== 'auto') break
-    }
-    
-    // 如果没找到，输出调试信息
-    if (cropPosition === 'auto') {
-      console.warn('⚠️ 导出时未找到 item 的裁剪位置:', {
-        itemId,
-        allItemIds: tiers.value.flatMap(tier => 
-          tier.rows.flatMap(row => row.items.map(i => String(i.id)))
-        )
-      })
+      if (found) break
     }
   }
   
@@ -1177,9 +1221,19 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   const naturalAspectRatio = naturalWidth / naturalHeight
   const targetAspectRatio = 0.75 // 3/4
   // 根据导出缩放比例提高canvas分辨率，确保放大后清晰
-  const containerWidth = 100 * scale
-  const containerHeight = 133 * scale
+  const containerWidth = (getSize('image-width') || 100) * scale
+  const containerHeight = (getSize('image-height') || 133) * scale
   
+  const canvas = document.createElement('canvas')
+  canvas.width = containerWidth
+  canvas.height = containerHeight
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  
+  console.log(`[Export Debug] Item: ${itemId || 'unknown'}`)
+  console.log(`[Export Debug] Container Target: ${containerWidth}x${containerHeight}`)
+  console.log(`[Export Debug] Image Natural: ${naturalWidth}x${naturalHeight}`)
+
   // 计算裁剪区域
   // 原理：先按目标尺寸等比缩放，然后从原图中裁剪对应区域
   let sourceX = 0
@@ -1189,10 +1243,90 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   
   // ✅ 如果裁剪位置是自定义坐标对象，直接使用
   if (typeof cropPosition === 'object' && cropPosition !== null && 'sourceX' in cropPosition) {
-    sourceX = cropPosition.sourceX
-    sourceY = cropPosition.sourceY
-    sourceWidth = cropPosition.sourceWidth
-    sourceHeight = cropPosition.sourceHeight
+    const { sourceX, sourceY, sourceWidth } = cropPosition
+    console.log(`[Export Debug] Custom Crop (Raw): x=${sourceX}, y=${sourceY}, w=${sourceWidth}`)
+    
+    // 获取高清原始宽度 (用于计算缩放)
+    let liveNaturalWidth = naturalWidth // Default to current if missing
+    let liveNaturalHeight = naturalHeight
+    
+    if (itemId) {
+       const foundItem = tiers.value.flatMap(t => t.rows.flatMap(r => r.items)).find(i => String(i.id) === String(itemId))
+       if (foundItem && foundItem.naturalWidth) {
+         liveNaturalWidth = foundItem.naturalWidth
+         liveNaturalHeight = foundItem.naturalHeight || naturalHeight
+       }
+    }
+    console.log(`[Export Debug] Live Natural Width: ${liveNaturalWidth} (Export Natural: ${naturalWidth})`)
+
+    // IMPORTANT: Adapt and Normalize Crop for Export
+    // Just like in TierRow, we must adapt the saved crop to the export container's ratio.
+    const exportTargetRatio = containerWidth / containerHeight
+    
+    // 1. Normalize Resolution (Saved Basis -> Live Basis)
+    let effectiveCrop = normalizeCropResolution(
+      cropPosition,
+      liveNaturalWidth, 
+      liveNaturalWidth // Here we use liveNaturalWidth as both "saved" AND "current" basis because we want to operate in the high-res space if available
+    )
+    
+    // Actually, normalizeCropResolution is designed to convert FROM saved TO current.
+    // If we are drawing the *high res image* (liveNaturalWidth), and the crop was saved for *that same high res image*, we don't need to scale?
+    // Wait, the `img` element in export might be high res or low res proxy.
+    // The `img` passed to this function is loaded from `src`.
+    // If `src` is high res, `naturalWidth` is high res.
+    // If `src` is proxy (rare in export due to processExportImages fetching Blob), it matches.
+    
+    // Let's use the `normalizeCropResolution` properly:
+    // Convert from `props.item.naturalWidth` (Saved Basis) -> `img.naturalWidth` (Export Basis)
+    effectiveCrop = normalizeCropResolution(
+       cropPosition,
+       liveNaturalWidth, // Use the item's stored naturalWidth as "Saved Basis"
+       naturalWidth      // Use the actual current image's width as "Runtime Basis"
+    )
+    
+    // 2. Adapt to Export Aspect Ratio
+    effectiveCrop = adaptCropToRatio(
+       effectiveCrop,
+       exportTargetRatio,
+       naturalWidth,
+       naturalHeight
+    )
+    
+    // update variables for simulation
+    const { sourceX: finalSX, sourceY: finalSY, sourceWidth: finalSW } = effectiveCrop
+    
+    // 模拟 CSS 行为: Scale = ContainerWidth / SourceWidth
+    // 这里 sourceWidth 是基于 naturalWidth (current image) 的
+    const renderScale = containerWidth / finalSW
+    
+    // 计算绘制目标尺寸
+    // 我们将整张图片绘制到 canvas 上，通过 offset 实现裁剪
+    // 目标宽度 = 原始全图宽度 * 缩放比例
+    const destWidth = naturalWidth * renderScale
+    const destHeight = (naturalHeight / naturalWidth) * destWidth // 保持原图宽高比
+
+    // 计算 Offset
+    // CSS logic: left = -sourceX * scale
+    const destX = -finalSX * renderScale
+    const destY = -finalSY * renderScale
+
+    console.log(`[Export Debug] Simulation Props:`)
+    console.log(`  Render Scale: ${renderScale}`)
+    console.log(`  Dest Rect: x=${destX}, y=${destY}, w=${destWidth}, h=${destHeight}`)
+    console.log(`  Canvas Size: ${containerWidth}x${containerHeight}`)
+
+    // 使用简单的 drawImage (img, dx, dy, dw, dh)
+    // Canvas 会自动处理分辨率缩放 (proxy 400px -> target 1000px)
+    // 并且会自动 clip 超出容器的部分
+    try {
+      ctx.drawImage(img, destX, destY, destWidth, destHeight)
+    } catch (e) {
+      console.error('Canvas draw failed', e)
+      return null
+    }
+
+    return canvas.toDataURL('image/png')
   } else if (naturalAspectRatio > targetAspectRatio) {
     // s > 0.75：图片较宽
     // 需要从原图中裁剪出对应100px的部分
@@ -1235,15 +1369,6 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   
   // 使用canvas裁剪图片
   try {
-    const canvas = document.createElement('canvas')
-    canvas.width = containerWidth
-    canvas.height = containerHeight
-    const ctx = canvas.getContext('2d')
-    
-    if (!ctx) {
-      return null
-    }
-    
     ctx.imageSmoothingEnabled = true
     ctx.imageSmoothingQuality = 'high'
     

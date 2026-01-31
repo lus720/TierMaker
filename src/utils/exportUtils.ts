@@ -4,19 +4,20 @@
  */
 
 import type { CropPosition } from '../types'
+import { getSize } from './configManager'
 
 /**
  * 处理克隆文档中的所有图片，应用 CORS 代理和裁剪
  */
 export async function processExportImages(
-    clonedDoc: Document,
+    root: HTMLElement,
     scale: number,
     cropImageFn: (img: HTMLImageElement, scale: number) => Promise<string | null>,
     getCorsProxyUrlFn: (url: string) => string,
     applySmartCropFn: (img: HTMLImageElement) => void,
     exportType: 'image' | 'pdf' = 'image'
 ): Promise<void> {
-    const allImages = clonedDoc.querySelectorAll('img') as NodeListOf<HTMLImageElement>
+    const allImages = root.querySelectorAll('img') as NodeListOf<HTMLImageElement>
     const imageProcessPromises: Promise<void>[] = []
 
     allImages.forEach((img) => {
@@ -28,25 +29,32 @@ export async function processExportImages(
             // 如果 currentSrc 已经是 data URL（主页面已裁剪），直接使用
             if (currentSrc.startsWith('data:')) {
                 img.src = currentSrc
-                img.style.width = '100px'
-                img.style.height = '133px'
+                // Use configured sizes
+                const width = getSize('image-width') || 100
+                const height = getSize('image-height') || 133
+                img.style.width = `${width}px`
+                img.style.height = `${height}px`
                 img.style.objectFit = 'none'
                 resolve()
                 return
             }
 
-            const originalSrc = dataOriginalSrc || currentSrc
+            // 优先检测 blob，如果当前图片是 blob (本地上传)，它是最高清晰度且无需代理
+            // 必须优先于 data-original-src，否则会被替换为 url 的代理版本 (可能分辨率较低)
+            const isBlob = currentSrc.startsWith('blob:')
+            const originalSrc = isBlob ? currentSrc : (dataOriginalSrc || currentSrc)
 
             // 替换为 CORS 代理 URL
             if (originalSrc && !originalSrc.startsWith('data:') && !originalSrc.startsWith('blob:') && !originalSrc.includes('wsrv.nl')) {
                 const proxyUrl = getCorsProxyUrlFn(originalSrc)
                 const isVndbImage = originalSrc.includes('vndb.org')
 
-                img.src = proxyUrl
+                // 核心修复: 先设置 crossOrigin，再设置 src
                 // VNDB 图片直接使用原图，不设置 crossOrigin
                 if (!isVndbImage || proxyUrl !== originalSrc) {
                     img.crossOrigin = 'anonymous'
                 }
+                img.src = proxyUrl
             } else if (originalSrc?.includes('wsrv.nl') || originalSrc?.startsWith('blob:')) {
                 img.crossOrigin = 'anonymous'
             } else {
@@ -56,21 +64,34 @@ export async function processExportImages(
             // 等待图片加载完成
             const waitForLoad = () => {
                 if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    // 核心修复: 图片加载完成后立即清除监听器，防止后续修改 src 导致死循环
+                    img.onload = null
+                    img.onerror = null
+
                     // 图片已加载，进行裁剪
                     cropImageFn(img, scale).then((croppedBase64) => {
+                        const width = getSize('image-width') || 100
+                        const height = getSize('image-height') || 133
+
                         if (croppedBase64) {
                             img.src = croppedBase64
-                            img.style.width = '100px'
-                            img.style.height = '133px'
+                            img.style.width = `${width}px`
+                            img.style.height = `${height}px`
                             img.style.objectFit = 'none'
                         } else {
                             console.warn(`⚠️ 导出${exportType === 'pdf' ? ' PDF' : '图片'}时裁剪失败，使用 CSS 方式:`, { itemId })
                             applySmartCropFn(img)
                         }
-                        resolve()
                     }).catch((error) => {
                         console.error(`❌ 导出${exportType === 'pdf' ? ' PDF' : '图片'}时裁剪出错:`, { itemId, error })
                         applySmartCropFn(img)
+                    }).finally(() => {
+                        // 核心修复: 无论成功还是失败，都必须清理绝对定位样式
+                        // 防止 CSS 裁剪的遗留样式导致偏移
+                        img.style.position = 'static'
+                        img.style.left = 'auto'
+                        img.style.top = 'auto'
+                        img.style.transform = 'none'
                         resolve()
                     })
                 } else {
@@ -95,8 +116,8 @@ export async function processExportImages(
 /**
  * 处理克隆文档中的空位元素
  */
-export function processEmptySlots(clonedDoc: Document): void {
-    const emptySlots = clonedDoc.querySelectorAll('.tier-item.empty')
+export function processEmptySlots(root: HTMLElement): void {
+    const emptySlots = root.querySelectorAll('.tier-item.empty')
     emptySlots.forEach((slot) => {
         const el = slot as HTMLElement
         const parent = el.parentElement
@@ -117,7 +138,7 @@ export function processEmptySlots(clonedDoc: Document): void {
  * 配置导出时的 DOM 样式
  */
 export function configureExportStyles(
-    clonedDoc: Document,
+    root: HTMLElement,
     options: {
         titleFontSize: number
         originalAppWidth: number
@@ -126,14 +147,14 @@ export function configureExportStyles(
     const { titleFontSize, originalAppWidth } = options
 
     // 确保 Header 样式正确
-    const header = clonedDoc.querySelector('.header') as HTMLElement
+    const header = root.querySelector('.header') as HTMLElement
     if (header) {
         header.style.paddingBottom = `${titleFontSize / 2}px`
         header.style.marginBottom = '0'
     }
 
     // 确保标题正常显示
-    const clonedTitle = clonedDoc.querySelector('.title') as HTMLElement
+    const clonedTitle = root.querySelector('.title') as HTMLElement
     if (clonedTitle) {
         clonedTitle.style.display = 'block'
         clonedTitle.style.visibility = 'visible'
@@ -148,14 +169,14 @@ export function configureExportStyles(
     }
 
     // 设置 tier-list 的顶部间距
-    const clonedTierList = clonedDoc.querySelector('.tier-list') as HTMLElement
+    const clonedTierList = root.querySelector('.tier-list') as HTMLElement
     if (clonedTierList) {
         clonedTierList.style.marginTop = '0'
         clonedTierList.style.paddingTop = '0'
     }
 
     // Tight 模式：移除所有留白
-    const clonedApp = clonedDoc.querySelector('.app') as HTMLElement
+    const clonedApp = root.querySelector('.app') as HTMLElement
     if (clonedApp) {
         clonedApp.style.padding = '0'
         clonedApp.style.margin = '0'
@@ -168,28 +189,28 @@ export function configureExportStyles(
  * 隐藏导出时不需要的 UI 元素
  */
 export function hideExportUIElements(
-    clonedDoc: Document,
+    root: HTMLElement,
     options?: { hideCandidates?: boolean; hideUnranked?: boolean }
 ): void {
     const { hideCandidates = true, hideUnranked = false } = options || {}
 
     // 隐藏按钮和操作栏
-    clonedDoc.querySelectorAll('button, .btn, .header-actions').forEach((el: any) => el.style.display = 'none')
+    root.querySelectorAll('button, .btn, .header-actions').forEach((el: any) => el.style.display = 'none')
 
-    const headerLeft = clonedDoc.querySelector('.header-left') as HTMLElement
+    const headerLeft = root.querySelector('.header-left') as HTMLElement
     if (headerLeft) {
         headerLeft.style.display = 'none'
     }
 
     // 隐藏模态框
-    const modals = clonedDoc.querySelectorAll('.modal-overlay, [class*="modal"]')
+    const modals = root.querySelectorAll('.modal-overlay, [class*="modal"]')
     modals.forEach((modal) => {
         (modal as HTMLElement).style.display = 'none'
     })
 
     // 隐藏候选框
     if (hideCandidates) {
-        const candidatesBox = clonedDoc.querySelector('.candidates-box') as HTMLElement
+        const candidatesBox = root.querySelector('.candidates-box') as HTMLElement
         if (candidatesBox) {
             candidatesBox.style.display = 'none'
             candidatesBox.style.visibility = 'hidden'
@@ -202,7 +223,7 @@ export function hideExportUIElements(
 
     // 隐藏无等级列表和分割线
     if (hideUnranked) {
-        const dividers = clonedDoc.querySelectorAll('.divider')
+        const dividers = root.querySelectorAll('.divider')
         if (dividers.length > 0) {
             const lastDivider = dividers[dividers.length - 1] as HTMLElement
             lastDivider.style.display = 'none'
@@ -222,7 +243,19 @@ export function hideExportUIElements(
 /**
  * 同步主题到克隆文档
  */
-export function syncThemeToClonedDoc(clonedDoc: Document): void {
+/**
+ * 同步主题到克隆节点 (Since we are in same doc, we might just look up root)
+ * Not strictly needed if we clone styles, but good to set attribute on container if usage depends on it.
+ * But wait, data-theme is on html. We should set it on the container if we want scoped styles? 
+ * Or just rely on global? 
+ * Actually, let's just make it a no-op or set on container if needed.
+ * But CSS variables are usually on :root. 
+ * If we are cloning inside the SAME document, the root :root variables apply.
+ * So we don't need to do anything for CSS vars.
+ * But specific selectors like [data-theme="dark"] .foo might need the attribute on a parent.
+ * Let's set it on the root element.
+ */
+export function syncThemeToClonedDoc(root: HTMLElement): void {
     const currentTheme = document.documentElement.getAttribute('data-theme') || 'auto'
-    clonedDoc.documentElement.setAttribute('data-theme', currentTheme)
+    root.setAttribute('data-theme', currentTheme)
 }

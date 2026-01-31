@@ -27,6 +27,16 @@ async function dataURLToBlob(dataURL: string): Promise<Blob> {
 }
 
 /**
+ * Helper: Generate UUID
+ */
+export function generateUuid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8)
+    return v.toString(16)
+  })
+}
+
+/**
  * Migrate data from LocalStorage to IndexedDB
  */
 export async function migrateFromLocalStorage(): Promise<void> {
@@ -91,6 +101,11 @@ export async function saveTierData(tiers: Tier[]): Promise<void> {
                 delete saveItem._blob
               }
 
+              // Ensure UUID exists
+              if (!saveItem.uuid) {
+                saveItem.uuid = generateUuid()
+              }
+
               return saveItem
             })
           }
@@ -141,6 +156,12 @@ export async function loadTierData(): Promise<Tier[]> {
               } catch (e) {
                 console.error('Failed to convert originalImage blob', e)
               }
+            }
+
+            // Auto-repair: Inject UUID if missing
+            if (!item.uuid) {
+              item.uuid = generateUuid()
+              needsSave = true
             }
           }
         }
@@ -372,6 +393,11 @@ export async function importAllData(data: ExportData): Promise<{
           }
           if (typeof item.originalImage === 'string' && item.originalImage.startsWith('data:')) {
             item.originalImage = await dataURLToBlob(item.originalImage)
+          }
+
+          // Inject UUID
+          if (!item.uuid) {
+            item.uuid = generateUuid()
           }
         }
       }

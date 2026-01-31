@@ -20,7 +20,10 @@ export interface AnimeItem {
   originalUrl?: string // 添加作品时的默认web链接
   originalImage?: string | Blob // 添加作品时的默认封面图链接
   cropPosition?: CropPosition // 自定义裁剪位置，默认为 'auto'（自动）
+  naturalWidth?: number
+  naturalHeight?: number
   _blob?: Blob // Runtime only: cache for original blob data
+  uuid?: string // Unique instance ID for Vue keys
 }
 
 // 评分等级配置

@@ -12,19 +12,16 @@ sizes:
   image-aspect-ratio: 0.75 # 3:4 比例，用于裁剪逻辑
   
   # ==================== 条目卡片 ====================
-  item-width: 100
-  item-height: 173           # 图片(133px) + 名称区(40px)
-  item-height-hide-name: 133  # 隐藏名称时的高度
   item-name-height: 40
   
   # ==================== 等级标签 ====================
   label-font-size: 32
   label-min-width: 80
-  label-min-height: 120
+  label-min-height: 0  # 120
   label-padding-x: 10
   
   # ==================== 行样式 ====================
-  row-min-height: 120   # 行最小高度
+  row-min-height: 0   # 行最小高度
   row-padding: 10        # 行的左右内边距
   row-gap: 10            # 物品卡片之间的间距
   container-padding-top: 10    # 容器上内边距

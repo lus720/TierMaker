@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { computed, ref, toRaw, watch, onMounted, nextTick, onUnmounted } from 'vue'
 import type { AnimeItem, CropPosition } from '../types'
 import { generateDefaultUrl } from '../utils/url'
 import { getSize } from '../utils/configManager'
+import { adaptCropToRatio, normalizeCropResolution } from '../utils/cropUtils'
 
 const props = defineProps<{
   item: AnimeItem | null
@@ -187,12 +188,50 @@ function updatePreviewCrop() {
     let sourceWidth = naturalWidth
     let sourceHeight = naturalHeight
     
-    // ✅ 如果裁剪位置是自定义坐标对象，直接使用
+    // ✅ 如果裁剪位置是自定义坐标对象，确认其宽高比是否匹配当前设置
+    let shouldUseCustomCrop = false
+    let customSourceX = 0, customSourceY = 0, customSourceWidth = 0, customSourceHeight = 0
+
     if (typeof cropPos === 'object' && cropPos !== null && 'sourceX' in cropPos) {
-      sourceX = cropPos.sourceX
-      sourceY = cropPos.sourceY
-      sourceWidth = cropPos.sourceWidth
-      sourceHeight = cropPos.sourceHeight
+       // 1. 规范化分辨率 (处理高清保存/低清预览问题)
+       let effectiveCrop = normalizeCropResolution(
+          cropPos as any, 
+          props.item?.naturalWidth, 
+          naturalWidth
+       )
+       
+       // 2. 动态适配当前宽高比 (Cover/Center strategy)
+       // 这确保编辑弹窗打开时，白框形状总是正确的
+       const adaptedCrop = adaptCropToRatio(
+          effectiveCrop, 
+          targetAspectRatio, 
+          naturalWidth, 
+          naturalHeight
+       )
+       
+       // 更新UI状态
+       customSourceX = adaptedCrop.sourceX
+       customSourceY = adaptedCrop.sourceY
+       customSourceWidth = adaptedCrop.sourceWidth
+       customSourceHeight = adaptedCrop.sourceHeight
+       shouldUseCustomCrop = true
+       
+       // 立即更新 ref，确保后续逻辑和保存使用正确值
+       // Only update if changed significantly
+       if (
+          Math.abs(adaptedCrop.sourceX - cropPos.sourceX) > 1 || 
+          Math.abs(adaptedCrop.sourceWidth - cropPos.sourceWidth) > 1 
+       ) {
+          console.log('[EditItemModal] Auto-adapted crop for edit:', adaptedCrop)
+          cropPosition.value = adaptedCrop
+       }
+    }
+
+    if (shouldUseCustomCrop) {
+      sourceX = customSourceX
+      sourceY = customSourceY
+      sourceWidth = customSourceWidth
+      sourceHeight = customSourceHeight
     } else if (naturalRatio > targetAspectRatio) {
       // s > 0.75：图片较宽
       // 需要从原图中裁剪出对应100px的部分
@@ -452,7 +491,7 @@ function handleSave() {
     finalUrl = originalUrl || ''
   }
   
-  const finalCropPosition = cropPosition.value === 'auto' ? undefined : cropPosition.value
+  const finalCropPosition = cropPosition.value === 'auto' ? undefined : toRaw(cropPosition.value)
   
   
   const updatedItem: AnimeItem = {
@@ -464,14 +503,14 @@ function handleSave() {
     originalUrl: originalUrl,
     originalImage: originalImage,
     cropPosition: finalCropPosition,
-    _blob: imageFile.value || props.item._blob, // Update blob if new file, else keep existing
+    _blob: imageFile.value ? toRaw(imageFile.value) : props.item._blob, // Update blob if new file, else keep existing
   }
   
   emit('save', updatedItem)
 }
 
 function handleCancel() {
-  emit('close')
+  handleSave()
 }
 
 function clearCustomUrl() {
@@ -546,8 +585,8 @@ function handleMouseUp(event: MouseEvent) {
   })
 
   if (!mouseDownInside.value && !mouseUpInside) {
-    console.log('[EditItemModal] Closing Modal')
-    emit('close')
+    console.log('[EditItemModal] Closing Modal (Auto Save)')
+    handleSave()
   }
   mouseDownInside.value = false
   wasMouseDownOnModal.value = false

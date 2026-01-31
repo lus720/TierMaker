@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import type { TierConfig } from '../types'
-import { getSetting, getSize, updateSizes, saveLocalConfig } from '../utils/configManager'
+import { getSetting, getSize, updateSizes, saveLocalConfig, clearLocalConfig } from '../utils/configManager'
 import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadThemePreference, saveThemePreference, loadHideItemNames, saveHideItemNames, loadExportScale, saveExportScale, DEFAULT_TIER_CONFIGS } from '../utils/storage'
 
 const props = defineProps<{
@@ -223,18 +223,15 @@ function handleResetSettings() {
   hideItemNames.value = getSetting('hide-item-names') ?? false
   compactMode.value = getSetting('compact-mode') || false
   
-  // 重置图片尺寸（这里假设重置为默认值，或者应该调用 configManager 的清除？）
-  // 暂时重置为默认值 100px, 0.75 ratio
-  imageWidth.value = 100
-  imageAspectRatio.value = 0.75
-  imageHeight.value = 133
-  updateSizes({
-    'image-width': 100,
-    'image-aspect-ratio': 0.75
-  })
+  // 重置为 config.yaml 中的默认值
+  clearLocalConfig()
   
-  // 不关闭弹窗，让用户看到重置后的值
-  // configs 会通过 props 的 watch 自动更新
+  // 重新读取默认配置
+  imageWidth.value = getSize('image-width') || 200 // Default fallback matched to config.yaml
+  imageAspectRatio.value = getSize('image-aspect-ratio') || 0.75
+  imageHeight.value = Math.round(imageWidth.value / imageAspectRatio.value)
+  
+  // Update UI values immediately
 }
 
 function handleClose() {
