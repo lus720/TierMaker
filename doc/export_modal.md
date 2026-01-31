@@ -59,7 +59,7 @@ graph TD
 2. 将页面滚动到顶部，克隆 DOM 到隐藏容器。
 3. 同步主题、隐藏 UI、处理空位。
 4. 处理图片：
-   - CORS 代理（`wsrv.nl`）
+   - CORS 代理（默认 `wsrv.nl`，VNDB 使用 `i0.wp.com`）
    - Canvas 裁剪（`cropImageWithCanvas`）
    - CSS 裁剪兜底（`applySmartCropToImage`）
 5. 计算标题字号（从 `.title` 获取）并配置导出样式。
@@ -143,7 +143,8 @@ graph TD
 - `processExportImages` 使用 `getSize('image-width' | 'image-height')`，强依赖配置键名与计算逻辑。
 
 **泄露点 3：URL 与资源来源**
-- CORS 逻辑硬编码 `wsrv.nl` 与 `vndb.org`，易受域名策略变化影响。
+- CORS 逻辑硬编码 `wsrv.nl`、`i0.wp.com` 与 `vndb.org`，易受域名策略变化影响。
+- VNDB 由于屏蔽了 `wsrv.nl` 且直连会污染画布（Tainted Canvas），需特殊处理。
 
 **建议**：
 - 将 DOM 选择器、数据属性等集中为导出专用常量或适配层。

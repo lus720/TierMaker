@@ -52,6 +52,10 @@ tier-list-simple/
 
 https://next.bgm.tv/demo/access-token 获取 Access Token
 
+https://github.com/wxt2005/bangumi-list-v3 
+
+https://bgmlist.com/api/v1/bangumi/archive/2021q1 获取季度新番
+
 ### 季度新番
 
 https://bgmlist.com/

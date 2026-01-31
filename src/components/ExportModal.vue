@@ -522,6 +522,28 @@ async function handleExportJSON() {
   }
 }
 
+// 跟踪鼠标按下是否在 overlay 上
+const mouseDownOnOverlay = ref(false)
+
+function handleOverlayMouseDown(event: MouseEvent) {
+  // 检查是否点击在 overlay 上（而不是 modal-content 上）
+  mouseDownOnOverlay.value = (event.target as HTMLElement).classList.contains('modal-overlay')
+}
+
+function handleOverlayMouseUp(event: MouseEvent) {
+  // 导出中不允许关闭
+  if (isExportingImage.value || isExportingPDF.value) {
+    mouseDownOnOverlay.value = false
+    return
+  }
+  // 只有当 mousedown 和 mouseup 都在 overlay 上时才关闭
+  const mouseUpOnOverlay = (event.target as HTMLElement).classList.contains('modal-overlay')
+  if (mouseDownOnOverlay.value && mouseUpOnOverlay) {
+    emit('close')
+  }
+  mouseDownOnOverlay.value = false
+}
+
 function handleClose() {
   if (isExportingImage.value || isExportingPDF.value) {
     return // 导出中不允许关闭
@@ -533,7 +555,7 @@ const isExporting = computed(() => isExportingImage.value || isExportingPDF.valu
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="handleClose">
+  <div class="modal-overlay" @mousedown="handleOverlayMouseDown" @mouseup="handleOverlayMouseUp">
     <div class="modal-content">
       <div class="modal-header">
         <h2 class="modal-title">导出</h2>

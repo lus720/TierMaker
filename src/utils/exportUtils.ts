@@ -15,12 +15,35 @@ export async function processExportImages(
     cropImageFn: (img: HTMLImageElement, scale: number) => Promise<string | null>,
     getCorsProxyUrlFn: (url: string) => string,
     applySmartCropFn: (img: HTMLImageElement) => void,
-    exportType: 'image' | 'pdf' = 'image'
+    exportType: 'image' | 'pdf' = 'image',
+    options?: { excludeCandidates?: boolean }
 ): Promise<void> {
+    const { excludeCandidates = true } = options || {}
+
     const allImages = root.querySelectorAll('img') as NodeListOf<HTMLImageElement>
     const imageProcessPromises: Promise<void>[] = []
 
+    // 找到 divider 元素，用于判断哪些 tier-list 是在 divider 之后的（即 unranked/备选框区域）
+    const divider = root.querySelector('.divider')
+    let unrankedTierList: Element | null = null
+    if (divider && excludeCandidates) {
+        // 找到 divider 后面的第一个 .tier-list
+        let nextEl = divider.nextElementSibling
+        while (nextEl) {
+            if (nextEl.classList.contains('tier-list')) {
+                unrankedTierList = nextEl
+                break
+            }
+            nextEl = nextEl.nextElementSibling
+        }
+    }
+
     allImages.forEach((img) => {
+        // 如果启用了排除候选框，跳过备选框（unranked tier-list）中的图片
+        if (excludeCandidates && unrankedTierList && unrankedTierList.contains(img)) {
+            console.log(`[Export] Skipping unranked/candidate item image: ${img.getAttribute('data-item-id')}`)
+            return
+        }
         const processPromise = new Promise<void>(async (resolve) => {
             const itemId = img.getAttribute('data-item-id')
             const currentSrc = img.src
