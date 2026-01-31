@@ -1,18 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
-import html2canvas from 'html2canvas'
-import { jsPDF } from 'jspdf'
 import TierList from './components/TierList.vue'
 import SearchModal from './components/SearchModal.vue'
 import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
+import ImportModal from './components/ImportModal.vue'
+import ExportModal from './components/ExportModal.vue'
 
-import { getItemUrl } from './utils/url'
-import { processExportImages, processEmptySlots, configureExportStyles, hideExportUIElements, syncThemeToClonedDoc } from './utils/exportUtils'
-import { initConfigStyles, getSize } from './utils/configManager'
-import type { Tier, AnimeItem, TierConfig, CropPosition } from './types'
-import { adaptCropToRatio, normalizeCropResolution } from './utils/cropUtils'
-import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, exportAllData, importAllData, clearItemsAndTitle, resetSettings, loadThemePreference, loadHideItemNames, loadExportScale, DEFAULT_TIER_CONFIGS, type ExportData } from './utils/storage'
+import { initConfigStyles } from './utils/configManager'
+import type { Tier, AnimeItem, TierConfig } from './types'
+import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, importAllData, clearItemsAndTitle, resetSettings, loadThemePreference, loadHideItemNames, loadExportScale, DEFAULT_TIER_CONFIGS, generateUuid, type ExportData } from './utils/storage'
 
 const tiers = ref<Tier[]>([])
 const unrankedTiers = ref<Tier[]>([{
@@ -26,6 +23,7 @@ const tierConfigs = ref<TierConfig[]>([])
 const showSearch = ref(false)
 const showConfig = ref(false)
 const showEditItem = ref(false)
+const showImportModal = ref(false)
 const currentTierId = ref<string | null>(null)
 const currentRowId = ref<string | null>(null)
 const currentIndex = ref<number | null>(null)
@@ -121,22 +119,13 @@ function initTheme() {
   }
 }
 
-// 点击外部关闭导出菜单
-function handleClickOutside(event: MouseEvent) {
-  const target = event.target as HTMLElement
-  if (!target.closest('.export-menu-container')) {
-    showExportMenu.value = false
-  }
-}
+
 
 // 加载数据
 onMounted(async () => {
   // 初始化配置样式（从 YAML 注入 CSS 变量）
   initConfigStyles()
-  
-  // 监听点击事件，用于关闭导出菜单
-  document.addEventListener('click', handleClickOutside)
-  
+
   initTheme()
   title.value = loadTitle()
   titleFontSize.value = loadTitleFontSize()
@@ -241,7 +230,7 @@ onMounted(async () => {
 
 // 清理事件监听
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
+  // No cleanup needed for export modal
 })
 
 // 监听数据变化，自动保存
@@ -275,6 +264,69 @@ function handleSelectAnime(anime: AnimeItem) {
   currentTierId.value = null
   currentRowId.value = null
   currentIndex.value = null
+}
+
+// 批量选择动画（用于导入角色或用户列表）
+function handleSelectAnimeMultiple(animes: AnimeItem[]) {
+  console.log('[App] handleSelectAnimeMultiple received items:', animes.length)
+  // 确保 unrankedTiers 存在
+  if (unrankedTiers.value.length === 0) {
+    // 应该不会发生，但以防万一
+    console.warn('[App] unrankedTiers is empty')
+    return
+  }
+  
+  // 修复/清理现有的无效数据（没有 UUID 的项目可能无法渲染）
+  // 这解决了之前导入但因缺少 UUID 而“隐形”的问题
+  let repairedCount = 0
+  unrankedTiers.value.forEach(tier => {
+    tier.rows.forEach(row => {
+      row.items.forEach(item => {
+        if (item.id && !item.uuid) {
+          item.uuid = generateUuid()
+          repairedCount++
+        }
+      })
+    })
+  })
+  if (repairedCount > 0) {
+    console.log(`[App] Repaired ${repairedCount} existing items with missing UUIDs. They should now be visible.`)
+  }
+  
+  const targetTier = unrankedTiers.value[0]
+  if (targetTier.rows.length === 0) {
+    targetTier.rows.push({ id: 'unranked-row-0', items: [] })
+  }
+  const targetRow = targetTier.rows[0]
+  
+  let addedCount = 0
+  
+  animes.forEach(anime => {
+    // 检查是否已存在（通过 ID）
+    const exists = tiers.value.some(t => t.rows.some(r => r.items.some(i => String(i.id) === String(anime.id)))) ||
+                  unrankedTiers.value.some(t => t.rows.some(r => r.items.some(i => String(i.id) === String(anime.id))))
+    
+    if (!exists) {
+      // 确保每个导入的项目都有 UUID，否则 TierRow 中的 v-for key 会重复 ('empty-slot')
+      if (!anime.uuid) {
+        anime.uuid = generateUuid()
+      }
+      targetRow.items.push(anime)
+      addedCount++
+    } else {
+       console.log(`[App] Skipping duplicate: ${anime.id} (${anime.name})`)
+    }
+  })
+  
+  console.log(`[App] Actually added ${addedCount} items. New total in pool: ${targetRow.items.length}`)
+  if (addedCount > 0) {
+    // 触发保存
+    // 注意：watch 会自动处理保存，只要 tiers/unrankedTiers 发生变化
+    console.log(`已导入 ${addedCount} 个项目`)
+  }
+  
+  // 批量添加后关闭搜索框
+  showSearch.value = false
 }
 
 function handleAddRow(tierId: string) {
@@ -625,9 +677,7 @@ watch(showConfig, (newVal, oldVal) => {
 const titleRef = ref<HTMLHeadingElement | null>(null)
 const isEditingTitle = ref(false)
 const appContentRef = ref<HTMLElement | null>(null)
-const isExportingImage = ref(false)
-const isExportingPDF = ref(false)
-const showExportMenu = ref(false)
+const showExportModal = ref(false)
 const showClearConfirm = ref(false)
 
 function handleTitleInput(e: Event) {
@@ -667,38 +717,7 @@ watch(title, (newTitle) => {
   }
 })
 
-// 导出数据（JSON）
-async function handleExportJSON() {
-  try {
-    const data = await exportAllData()
-    const jsonStr = JSON.stringify(data, null, 2)
-    const blob = new Blob([jsonStr], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `tier-list-${new Date().toISOString().split('T')[0]}.json`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-    showExportMenu.value = false
-  } catch (error) {
-    console.error('导出失败:', error)
-    alert('导出失败，请重试')
-  }
-}
 
-// 处理导出菜单点击
-function handleExportClick(type: 'image' | 'pdf' | 'json') {
-  if (type === 'image') {
-    handleExportImage()
-  } else if (type === 'pdf') {
-    handleExportPDF()
-  } else if (type === 'json') {
-    handleExportJSON()
-  }
-  showExportMenu.value = false
-}
 
 // 处理清空数据点击
 function handleClearClick() {
@@ -720,8 +739,81 @@ function handleCancelClear() {
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 function handleImportClick() {
-  fileInputRef.value?.click()
+  showImportModal.value = true
 }
+
+// 处理来自 ImportModal 的文件数据导入
+async function handleDataImport(data: ExportData) {
+  // Confirm overwrite
+  if (!confirm('导入数据将覆盖当前所有数据，是否继续？')) {
+    return
+  }
+
+  try {
+     const result = await importAllData(data)
+     if (result.success) {
+        // Reload data
+        title.value = loadTitle()
+        tierConfigs.value = loadTierConfigs()
+        tiers.value = await loadTierData()
+        
+        // Hydration logic as before...
+        tiers.value.forEach(tier => {
+          tier.rows.forEach(row => {
+            row.items.forEach(item => {
+              if (item.image instanceof Blob) {
+                item._blob = item.image
+                item.image = URL.createObjectURL(item.image)
+              }
+              if (item.originalImage instanceof Blob) {
+                item.originalImage = URL.createObjectURL(item.originalImage)
+              }
+            })
+          })
+        })
+        
+        // Sync and sort...
+        const configIds = new Set(tierConfigs.value.map(c => c.id))
+        tiers.value = tiers.value.filter(t => configIds.has(t.id))
+        
+        tierConfigs.value.forEach(config => {
+          if (!tiers.value.find(t => t.id === config.id)) {
+            tiers.value.push({
+              id: config.id,
+              rows: [{
+                id: `${config.id}-row-0`,
+                items: [],
+              }],
+            })
+          }
+        })
+        
+        tiers.value.sort((a, b) => {
+          const aOrder = tierConfigs.value.find(c => c.id === a.id)?.order ?? 999
+          const bOrder = tierConfigs.value.find(c => c.id === b.id)?.order ?? 999
+          return aOrder - bOrder
+        })
+        
+        nextTick(() => {
+          if (titleRef.value) {
+            titleRef.value.textContent = title.value
+          }
+        })
+        
+        showImportModal.value = false // Close modal on success
+     } else {
+        alert(`导入失败: ${result.error || '未知错误'}`)
+     }
+  } catch (error) {
+     console.error('导入失败:', error)
+     alert('导入过程中发生错误')
+  }
+}
+
+// Old handleFileImport can be kept or removed if not used. 
+// We will replace the original handleFileImport logic effectively with this.
+// But wait, the old one read the file. The new modal reads the file and passes `data`.
+// So we need this `handleDataImport`.
 
 function handleFileImport(e: Event) {
   const target = e.target as HTMLInputElement
@@ -811,584 +903,6 @@ function handleFileImport(e: Event) {
   reader.readAsText(file)
 }
 
-// 保存为高清图片
-
-// 保存为高清图片
-// 保存为高清图片
-async function handleExportImage() {
-  if (!appContentRef.value) {
-    alert('无法找到要导出的内容')
-    return
-  }
-  
-  if (isExportingImage.value) {
-    return // 防止重复点击
-  }
-  
-  isExportingImage.value = true
-  
-  try {
-    await nextTick()
-    
-    // 保存滚动位置并滚回顶部（防止截图不全）
-    const originalScrollX = window.scrollX
-    const originalScrollY = window.scrollY
-    window.scrollTo(0, 0)
-    await new Promise(resolve => setTimeout(resolve, 100))
-    
-    // 1. 手动克隆 DOM (解决 html2canvas onclone 异步问题)
-    const originalNode = appContentRef.value as HTMLElement
-    // 深度克隆节点
-    const clonedNode = originalNode.cloneNode(true) as HTMLElement
-    
-    // 2. 将克隆节点挂载到离屏容器 (必须挂载才能加载图片)
-    // 创建一个隐藏的容器
-    const hiddenContainer = document.createElement('div')
-    hiddenContainer.style.position = 'fixed'
-    hiddenContainer.style.left = '-9999px' // 移出视口
-    // hiddenContainer.style.visibility = 'hidden' // 不要用 visibility:hidden，可能会导致某些计算问题
-    hiddenContainer.style.zIndex = '-1000'
-    hiddenContainer.style.width = originalNode.offsetWidth + 'px' // 保持原有宽度
-    hiddenContainer.appendChild(clonedNode)
-    document.body.appendChild(hiddenContainer)
-    
-    // 3. 处理克隆节点 (图片代理、裁剪、样式调整)
-    const currentScale = exportScale.value // 使用用户设置的导出倍率
-    
-    // 同步主题
-    syncThemeToClonedDoc(hiddenContainer)
-    // 隐藏无关 UI (在 clone 上操作)
-    hideExportUIElements(hiddenContainer, { hideCandidates: true, hideUnranked: true })
-    // 处理 Empty Slots
-    processEmptySlots(hiddenContainer)
-    
-    // 异步处理图片：替换 proxy url, 等待加载, canvas 裁剪
-    // 这里我们可以放心地 await，不用担心 html2canvas 抢跑
-    await processExportImages(hiddenContainer, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'image')
-    
-    // 配置导出样式
-    const originalAppWidth = originalNode.offsetWidth || originalNode.scrollWidth
-    let computedTitleFontSize = 32
-    try {
-      const originalTitle = document.querySelector('.title') as HTMLElement
-      if (originalTitle) {
-        const computedStyle = window.getComputedStyle(originalTitle)
-        const parsedSize = parseFloat(computedStyle.fontSize)
-        if (!isNaN(parsedSize) && parsedSize > 0) {
-          computedTitleFontSize = parsedSize
-        }
-      }
-    } catch (e) {
-      console.warn('获取标题字体大小失败，使用默认值32px:', e)
-    }
-    configureExportStyles(hiddenContainer, { titleFontSize: computedTitleFontSize, originalAppWidth })
-
-    // 4. 调用 html2canvas 截图 (此时不需要再用 onclone)
-    const canvas = await html2canvas(clonedNode, {
-      scale: currentScale,
-      useCORS: true,
-      allowTaint: false,
-      logging: false,
-      backgroundColor: getCurrentThemeBackgroundColor(),
-      imageTimeout: 15000,
-    })
-    
-    // 5. 清理 DOM
-    document.body.removeChild(hiddenContainer)
-    
-    // 恢复滚动
-    window.scrollTo(originalScrollX, originalScrollY)
-    
-    // 导出
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        alert('生成图片失败')
-        isExportingImage.value = false
-        return
-      }
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      // 使用 JPEG 0.9 质量，比 PNG 快且体积小，画质几乎无损
-      a.download = `tier-list-${new Date().toISOString().split('T')[0]}.jpg`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-      isExportingImage.value = false
-    }, 'image/jpeg', 0.9)
-    
-  } catch (error) {
-    console.error('导出图片失败:', error)
-    alert('导出失败，请检查网络连接')
-    // 确保清理 DOM (如果有残留)
-    const containers = document.querySelectorAll('div[style*="left: -9999px"]')
-    containers.forEach(c => c.remove())
-    isExportingImage.value = false
-  }
-}
-
-
-// 保存为PDF（带超链接）
-async function handleExportPDF() {
-  if (!appContentRef.value) {
-    alert('无法找到要导出的内容')
-    return
-  }
-  
-  if (isExportingPDF.value || isExportingImage.value) {
-    return // 防止重复点击
-  }
-  
-  isExportingPDF.value = true
-  
-  try {
-    // 等待DOM更新
-    await nextTick()
-    await new Promise(resolve => setTimeout(resolve, 100))
-    
-    // 保存当前滚动位置
-    const originalScrollX = window.scrollX
-    const originalScrollY = window.scrollY
-    
-    // 滚动到顶部
-    window.scrollTo(0, 0)
-    await new Promise(resolve => setTimeout(resolve, 100))
-    
-    // 收集所有作品项的位置和链接信息
-    const itemLinks: Array<{ url: string; rect: DOMRect; item: AnimeItem }> = []
-    
-    // 遍历所有tier和items，收集链接信息
-    // 使用更可靠的方式查找DOM元素
-    tiers.value.forEach(tier => {
-      tier.rows.forEach(row => {
-        row.items.forEach((item, itemIndex) => {
-          if (item.id) {
-            const url = getItemUrl(item)
-            if (!url) {
-              return
-            }
-            
-            // 方法1: 通过 data-item-id 属性查找（在img元素上）
-            const imgElement = document.querySelector(`img[data-item-id="${item.id}"]`) as HTMLImageElement
-            let itemElement: HTMLElement | null = null
-            
-            if (imgElement) {
-              itemElement = imgElement.closest('.tier-item') as HTMLElement
-            }
-            
-            // 方法2: 如果方法1失败，尝试通过 rowId 和索引查找
-            if (!itemElement && row.id) {
-              const rowElement = document.querySelector(`[data-row-id="${row.id}"]`) as HTMLElement
-              if (rowElement) {
-                const tierItems = rowElement.querySelectorAll('.tier-item:not(.empty)')
-                if (itemIndex < tierItems.length) {
-                  itemElement = tierItems[itemIndex] as HTMLElement
-                }
-              }
-            }
-            
-            if (itemElement) {
-              const rect = itemElement.getBoundingClientRect()
-              const appRect = appContentRef.value!.getBoundingClientRect()
-              // 相对于appContent的位置
-              const relativeRect = new DOMRect(
-                rect.left - appRect.left,
-                rect.top - appRect.top,
-                rect.width,
-                rect.height
-              )
-              itemLinks.push({ url, rect: relativeRect, item })
-            }
-          }
-        })
-      })
-    })
-    
-    const totalItems = tiers.value.reduce((sum, tier) => 
-      sum + tier.rows.reduce((rowSum, row) => rowSum + row.items.filter(item => item.id).length, 0), 0)
-    
-    // 使用 html2canvas 生成图片（极速版：使用CORS直连）
-    // 1. 手动克隆 DOM (解决 html2canvas onclone 异步问题)
-    const originalNode = appContentRef.value as HTMLElement
-    const clonedNode = originalNode.cloneNode(true) as HTMLElement
-    
-    // 2. 将克隆节点挂载到离屏容器
-    const hiddenContainer = document.createElement('div')
-    hiddenContainer.style.position = 'fixed'
-    hiddenContainer.style.left = '-9999px'
-    hiddenContainer.style.zIndex = '-1000'
-    hiddenContainer.style.width = originalNode.offsetWidth + 'px'
-    hiddenContainer.appendChild(clonedNode)
-    document.body.appendChild(hiddenContainer)
-    
-    // 3. 处理克隆节点
-    const currentScale = exportScale.value
-    
-    // 同步主题
-    syncThemeToClonedDoc(hiddenContainer)
-    // 隐藏无关 UI
-    hideExportUIElements(hiddenContainer, { hideCandidates: true, hideUnranked: true })
-    // 处理 Empty Slots
-    processEmptySlots(hiddenContainer)
-    
-    // 异步处理图片
-    await processExportImages(hiddenContainer, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'pdf')
-    
-    // 配置导出样式
-    const originalApp = appContentRef.value as HTMLElement
-    const originalAppWidth = originalApp.offsetWidth || originalApp.scrollWidth
-    configureExportStyles(hiddenContainer, { titleFontSize: titleFontSize.value, originalAppWidth })
-
-    // 4. 调用 html2canvas 截图
-    const canvas = await html2canvas(clonedNode, {
-      scale: currentScale,
-      useCORS: true, 
-      allowTaint: false,
-      logging: false,
-      backgroundColor: getCurrentThemeBackgroundColor(),
-      imageTimeout: 15000,
-    })
-    
-    // 5. 清理 DOM
-    document.body.removeChild(hiddenContainer)
-    
-    // 恢复滚动位置
-    window.scrollTo(originalScrollX, originalScrollY)
-    
-    // 计算PDF尺寸（A4比例，但根据内容调整宽度）
-    // 注意：canvas 使用了用户设置的 scale，所以 canvas 尺寸是实际 DOM 的 scale 倍
-    const canvasWidth = canvas.width
-    const canvasHeight = canvas.height
-    const htmlScaleForPDF = currentScale // html2canvas 的 scale 参数
-    const actualDomWidth = canvasWidth / htmlScaleForPDF // 实际 DOM 宽度
-    const actualDomHeight = canvasHeight / htmlScaleForPDF // 实际 DOM 高度
-    
-    const pdfWidth = 210 // A4宽度（mm）
-    const pdfHeight = (canvasHeight / canvasWidth) * pdfWidth // 按比例计算高度
-    
-    // 创建PDF（使用实际内容高度，不强制最小高度，避免底部空白）
-    const pdf = new jsPDF({
-      orientation: pdfHeight > pdfWidth ? 'portrait' : 'landscape',
-      unit: 'mm',
-      format: [pdfWidth, pdfHeight], // 使用实际内容高度
-    })
-    
-    // 将canvas转换为图片并添加到PDF
-    // 使用 JPEG 压缩，显著减小 PDF 体积并提升生成速度
-    const imgData = canvas.toDataURL('image/jpeg', 0.9)
-    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST')
-    
-    // 为每个作品项添加超链接
-    // 重新计算比例: contentWidth 已经是 scale:2 之后的大小了
-    // 我们的 itemLinks.rect 是基于原始 DOM (scale:1) 的
-    const domWidth = canvasWidth / htmlScaleForPDF
-    const domHeight = canvasHeight / htmlScaleForPDF
-    const scaleX = pdfWidth / domWidth
-    const scaleY = pdfHeight / domHeight
-    
-    itemLinks.forEach(({ url, rect }) => {
-      pdf.link(
-        rect.left * scaleX, 
-        rect.top * scaleY, 
-        rect.width * scaleX, 
-        rect.height * scaleY, 
-        { url }
-      )
-    })
-    
-    
-    // 保存PDF
-    pdf.save(`tier-list-${new Date().toISOString().split('T')[0]}.pdf`)
-    
-    isExportingPDF.value = false
-  } catch (error) {
-    console.error('导出PDF失败:', error)
-    alert('导出PDF失败：' + (error instanceof Error ? error.message : '未知错误'))
-    // 清理可能残留的 DOM
-    const containers = document.querySelectorAll('div[style*="left: -9999px"]')
-    containers.forEach(c => c.remove())
-
-    isExportingPDF.value = false
-  }
-}
-
-// 使用CORS代理获取图片（使用 wsrv.nl，专门用于图片处理，更稳定）
-function getCorsProxyUrl(url: string): string {
-  if (!url) return ''
-  // 如果已经是 wsrv，直接返回
-  if (url.includes('wsrv.nl')) return url
-  
-  // VNDB 图片可能不支持 wsrv.nl 代理，尝试直接使用原图（如果支持 CORS）
-  // 或者使用其他代理服务
-  if (url.includes('vndb.org') || url.includes('t.vndb.org')) {
-    return url // 尝试直接使用，如果失败会在加载时处理
-  }
-  
-  // 关键优化：移除 t=... 时间戳，允许浏览器缓存图片
-  // output=png 保证透明度和兼容性
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=png`
-}
-
-// 核心逻辑：根据 3:4 (0.75) 比例智能调整裁剪位置
-// s > 0.75 (宽图/标准图): 居中 (center center)
-// s < 0.75 (长图): 保留顶部 (center top)
-// 统一处理所有图片，使用相同的裁剪规则
-function applySmartCropToImage(img: HTMLImageElement) {
-  // 必须有宽高才能计算，如果没有加载完则忽略
-  if (img.naturalWidth && img.naturalHeight) {
-    // 获取对应的 item 信息
-    const itemId = img.getAttribute('data-item-id')
-    let cropPosition: CropPosition = 'auto'
-    
-    if (itemId) {
-      let found = false
-      for (const tier of tiers.value) {
-        for (const row of tier.rows) {
-          const item = row.items.find(i => String(i.id) === String(itemId))
-          if (item) {
-            cropPosition = item.cropPosition || 'auto'
-            found = true
-            break
-          }
-        }
-        if (found) break
-      }
-    }
-    
-    const ratio = img.naturalWidth / img.naturalHeight
-    const targetRatio = 0.75
-    
-    const width = getSize('image-width') || 100
-    const height = getSize('image-height') || 133
-    img.style.objectFit = 'cover' // 确保填满
-    img.style.width = `${width}px`
-    img.style.height = `${height}px`
-    // Reset positioning styles from Custom Crop
-    img.style.position = 'static'
-    img.style.left = 'auto'
-    img.style.top = 'auto'
-    img.style.transform = 'none'
-    
-    // 根据保存的裁剪位置或自动判断
-    if (cropPosition === 'auto') {
-      if (ratio < targetRatio) {
-        // 场景：长图 (如 9:16) -> 靠上裁剪，保留头部
-        img.style.objectPosition = 'center top'
-      } else {
-        // 场景：宽图 (如 16:9, 1:1, 4:3) -> 居中裁剪
-        img.style.objectPosition = 'center center'
-      }
-    } else {
-      // 使用保存的自定义裁剪位置（只对字符串类型的预设位置设置 objectPosition）
-      if (typeof cropPosition === 'string') {
-        img.style.objectPosition = cropPosition
-      }
-      // 自定义坐标对象不需要设置 objectPosition，会在裁剪时使用
-    }
-  }
-}
-
-// 使用canvas手动裁剪图片（用于导出，确保html2canvas正确渲染）
-// 统一处理所有图片，使用相同的裁剪规则
-async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Promise<string | null> {
-  // 必须有宽高才能计算
-  if (!img.naturalWidth || !img.naturalHeight) {
-    return null
-  }
-  
-  // 获取对应的 item 信息
-  const itemId = img.getAttribute('data-item-id')
-  let cropPosition: CropPosition = 'auto'
-  
-  if (itemId) {
-    let found = false
-    for (const tier of tiers.value) {
-      for (const row of tier.rows) {
-        const item = row.items.find(i => String(i.id) === String(itemId))
-        if (item) {
-          cropPosition = item.cropPosition || 'auto'
-          found = true
-          break
-        }
-      }
-      if (found) break
-    }
-  }
-  
-  const naturalWidth = img.naturalWidth
-  const naturalHeight = img.naturalHeight
-  const naturalAspectRatio = naturalWidth / naturalHeight
-  const targetAspectRatio = 0.75 // 3/4
-  // 根据导出缩放比例提高canvas分辨率，确保放大后清晰
-  const containerWidth = (getSize('image-width') || 100) * scale
-  const containerHeight = (getSize('image-height') || 133) * scale
-  
-  const canvas = document.createElement('canvas')
-  canvas.width = containerWidth
-  canvas.height = containerHeight
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return null
-  
-  console.log(`[Export Debug] Item: ${itemId || 'unknown'}`)
-  console.log(`[Export Debug] Container Target: ${containerWidth}x${containerHeight}`)
-  console.log(`[Export Debug] Image Natural: ${naturalWidth}x${naturalHeight}`)
-
-  // 计算裁剪区域
-  // 原理：先按目标尺寸等比缩放，然后从原图中裁剪对应区域
-  let sourceX = 0
-  let sourceY = 0
-  let sourceWidth = naturalWidth
-  let sourceHeight = naturalHeight
-  
-  // ✅ 如果裁剪位置是自定义坐标对象，直接使用
-  if (typeof cropPosition === 'object' && cropPosition !== null && 'sourceX' in cropPosition) {
-    const { sourceX, sourceY, sourceWidth } = cropPosition
-    console.log(`[Export Debug] Custom Crop (Raw): x=${sourceX}, y=${sourceY}, w=${sourceWidth}`)
-    
-    // 获取高清原始宽度 (用于计算缩放)
-    let liveNaturalWidth = naturalWidth // Default to current if missing
-    let liveNaturalHeight = naturalHeight
-    
-    if (itemId) {
-       const foundItem = tiers.value.flatMap(t => t.rows.flatMap(r => r.items)).find(i => String(i.id) === String(itemId))
-       if (foundItem && foundItem.naturalWidth) {
-         liveNaturalWidth = foundItem.naturalWidth
-         liveNaturalHeight = foundItem.naturalHeight || naturalHeight
-       }
-    }
-    console.log(`[Export Debug] Live Natural Width: ${liveNaturalWidth} (Export Natural: ${naturalWidth})`)
-
-    // IMPORTANT: Adapt and Normalize Crop for Export
-    // Just like in TierRow, we must adapt the saved crop to the export container's ratio.
-    const exportTargetRatio = containerWidth / containerHeight
-    
-    // 1. Normalize Resolution (Saved Basis -> Live Basis)
-    let effectiveCrop = normalizeCropResolution(
-      cropPosition,
-      liveNaturalWidth, 
-      liveNaturalWidth // Here we use liveNaturalWidth as both "saved" AND "current" basis because we want to operate in the high-res space if available
-    )
-    
-    // Actually, normalizeCropResolution is designed to convert FROM saved TO current.
-    // If we are drawing the *high res image* (liveNaturalWidth), and the crop was saved for *that same high res image*, we don't need to scale?
-    // Wait, the `img` element in export might be high res or low res proxy.
-    // The `img` passed to this function is loaded from `src`.
-    // If `src` is high res, `naturalWidth` is high res.
-    // If `src` is proxy (rare in export due to processExportImages fetching Blob), it matches.
-    
-    // Let's use the `normalizeCropResolution` properly:
-    // Convert from `props.item.naturalWidth` (Saved Basis) -> `img.naturalWidth` (Export Basis)
-    effectiveCrop = normalizeCropResolution(
-       cropPosition,
-       liveNaturalWidth, // Use the item's stored naturalWidth as "Saved Basis"
-       naturalWidth      // Use the actual current image's width as "Runtime Basis"
-    )
-    
-    // 2. Adapt to Export Aspect Ratio
-    effectiveCrop = adaptCropToRatio(
-       effectiveCrop,
-       exportTargetRatio,
-       naturalWidth,
-       naturalHeight
-    )
-    
-    // update variables for simulation
-    const { sourceX: finalSX, sourceY: finalSY, sourceWidth: finalSW } = effectiveCrop
-    
-    // 模拟 CSS 行为: Scale = ContainerWidth / SourceWidth
-    // 这里 sourceWidth 是基于 naturalWidth (current image) 的
-    const renderScale = containerWidth / finalSW
-    
-    // 计算绘制目标尺寸
-    // 我们将整张图片绘制到 canvas 上，通过 offset 实现裁剪
-    // 目标宽度 = 原始全图宽度 * 缩放比例
-    const destWidth = naturalWidth * renderScale
-    const destHeight = (naturalHeight / naturalWidth) * destWidth // 保持原图宽高比
-
-    // 计算 Offset
-    // CSS logic: left = -sourceX * scale
-    const destX = -finalSX * renderScale
-    const destY = -finalSY * renderScale
-
-    console.log(`[Export Debug] Simulation Props:`)
-    console.log(`  Render Scale: ${renderScale}`)
-    console.log(`  Dest Rect: x=${destX}, y=${destY}, w=${destWidth}, h=${destHeight}`)
-    console.log(`  Canvas Size: ${containerWidth}x${containerHeight}`)
-
-    // 使用简单的 drawImage (img, dx, dy, dw, dh)
-    // Canvas 会自动处理分辨率缩放 (proxy 400px -> target 1000px)
-    // 并且会自动 clip 超出容器的部分
-    try {
-      ctx.drawImage(img, destX, destY, destWidth, destHeight)
-    } catch (e) {
-      console.error('Canvas draw failed', e)
-      return null
-    }
-
-    return canvas.toDataURL('image/png')
-  } else if (naturalAspectRatio > targetAspectRatio) {
-    // s > 0.75：图片较宽
-    // 需要从原图中裁剪出对应100px的部分
-    const scaleByHeight = containerHeight / naturalHeight
-    const targetWidthInOriginal = containerWidth / scaleByHeight
-    sourceWidth = targetWidthInOriginal
-    
-    // 根据裁剪位置计算 sourceX
-    if (cropPosition === 'left center') {
-      sourceX = 0 // 左侧
-    } else if (cropPosition === 'right center') {
-      sourceX = naturalWidth - sourceWidth // 右侧
-    } else {
-      // center center 或 auto（默认居中）
-      sourceX = (naturalWidth - sourceWidth) / 2 // 居中裁剪
-    }
-    
-    sourceY = 0
-    sourceHeight = naturalHeight
-  } else {
-    // s < 0.75：图片较高
-    // 需要从原图中裁剪出对应133px的部分
-    const scaleByWidth = containerWidth / naturalWidth
-    const targetHeightInOriginal = containerHeight / scaleByWidth
-    sourceHeight = targetHeightInOriginal
-    
-    // 根据裁剪位置计算 sourceY
-    if (cropPosition === 'center top') {
-      sourceY = 0 // 顶部
-    } else if (cropPosition === 'center bottom') {
-      sourceY = naturalHeight - sourceHeight // 底部
-    } else {
-      // center center 或 auto（默认顶部）
-      sourceY = 0 // 保留顶部
-    }
-    
-    sourceX = 0
-    sourceWidth = naturalWidth
-  }
-  
-  // 使用canvas裁剪图片
-  try {
-    ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = 'high'
-    
-    // 绘制裁剪后的图片
-    // 从原图中裁剪出指定区域，然后缩放到目标尺寸
-    ctx.drawImage(
-      img,
-      Math.round(sourceX), Math.round(sourceY), Math.round(sourceWidth), Math.round(sourceHeight),
-      0, 0, containerWidth, containerHeight
-    )
-    
-    // 返回裁剪后的base64，使用高质量PNG格式
-    return canvas.toDataURL('image/png', 1.0)
-  } catch (error) {
-    console.error('裁剪图片失败:', error)
-    return null
-  }
-}
-
-
 </script>
 
 <template>
@@ -1408,47 +922,12 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
         title="点击编辑标题"
       ></h1>
       <div class="header-actions">
-        <div class="export-menu-container">
-          <button 
-            class="btn btn-secondary" 
-            :class="{ 'export-menu-open': showExportMenu }"
-            @click.stop="showExportMenu = !showExportMenu"
-            title="导出"
-            :disabled="isExportingImage || isExportingPDF"
-          >
-            {{ isExportingImage ? '准备中...' : isExportingPDF ? '准备中...' : '导出' }}
-            <span class="export-arrow">▼</span>
-          </button>
-          <div v-if="showExportMenu" class="export-menu" @click.stop>
-            <button 
-              class="export-menu-item" 
-              @click="handleExportClick('image')"
-              :disabled="isExportingImage || isExportingPDF"
-            >
-              图片
-            </button>
-            <button 
-              class="export-menu-item" 
-              @click="handleExportClick('pdf')"
-              :disabled="isExportingImage || isExportingPDF"
-            >
-              PDF
-            </button>
-            <button 
-              class="export-menu-item" 
-              @click="handleExportClick('json')"
-            >
-              JSON
-            </button>
-          </div>
-        </div>
         <button 
-          v-if="isExportingImage || isExportingPDF" 
           class="btn btn-secondary" 
-          @click="isExportingImage = false; isExportingPDF = false" 
-          title="停止保存"
+          @click="showExportModal = true"
+          title="导出"
         >
-          停止保存
+          导出
         </button>
         <button class="btn btn-secondary" @click="handleImportClick" title="导入数据">
           导入
@@ -1474,7 +953,7 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
       :tiers="tiers"
       :tier-configs="tierConfigs"
       :is-dragging="isDragging"
-      :is-exporting-image="isExportingImage"
+      :is-exporting-image="false"
       :duplicate-item-ids="duplicateItemIds"
       :hide-item-names="hideItemNames"
       @add-item="handleAddItem"
@@ -1494,7 +973,7 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
       :tiers="unrankedTiers"
       :tier-configs="[{ id: 'unranked', label: '', color: 'transparent', order: 9999 }]"
       :is-dragging="isDragging"
-      :is-exporting-image="isExportingImage"
+      :is-exporting-image="false"
       :duplicate-item-ids="duplicateItemIds"
       :hide-item-names="hideItemNames"
       :hide-tier-labels="true"
@@ -1515,6 +994,7 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
       v-if="showSearch"
       @close="showSearch = false"
       @select="handleSelectAnime"
+      @select-multiple="handleSelectAnimeMultiple"
     />
 
     <ConfigModal
@@ -1559,6 +1039,24 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
       :is-long-press-triggered="isLongPressEdit"
       @close="handleCloseEditItem"
       @save="handleSaveEditItem"
+    />
+
+    <ImportModal
+      v-if="showImportModal"
+      @close="showImportModal = false"
+      @import-data="handleDataImport"
+      @import-items="handleSelectAnimeMultiple"
+    />
+
+    <ExportModal
+      v-if="showExportModal"
+      :tiers="tiers"
+      :tier-configs="tierConfigs"
+      :app-content-ref="appContentRef"
+      :title="title"
+      :title-font-size="titleFontSize"
+      :export-scale="exportScale"
+      @close="showExportModal = false"
     />
   </div>
 </template>
@@ -1661,62 +1159,7 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   color: #ffffff;
 }
 
-.export-menu-container {
-  position: relative;
-}
 
-.export-menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 5px;
-  background: var(--bg-color);
-  border: 2px solid var(--border-color);
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
-  min-width: var(--size-export-menu-min-width, 120px);
-  display: flex;
-  flex-direction: column;
-}
-
-.export-menu-item {
-  padding: 10px 20px;
-  border: none;
-  background: var(--bg-color);
-  color: var(--text-color);
-  font-size: 14px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: left;
-  border-bottom: 1px solid var(--border-light-color);
-}
-
-.export-menu-item:last-child {
-  border-bottom: none;
-}
-
-.export-menu-item:hover:not(:disabled) {
-  background: var(--border-color);
-  color: var(--bg-color);
-}
-
-.export-menu-item:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.export-arrow {
-  margin-left: 5px;
-  font-size: 10px;
-  display: inline-block;
-  transition: transform 0.2s;
-}
-
-.export-menu-open .export-arrow {
-  transform: rotate(180deg);
-}
 
 .confirm-overlay {
   position: fixed;

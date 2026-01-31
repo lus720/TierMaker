@@ -104,5 +104,5 @@ export interface BgmCharacterSearchResult {
 export type SearchResult = BgmSearchResult | VndbSearchResult | BgmCharacterSearchResult
 
 // API 源类型
-export type ApiSource = 'bangumi' | 'vndb' | 'character' | 'local'
+export type ApiSource = 'bangumi' | 'character' | 'local'
 

@@ -24,6 +24,7 @@ interface VndbQuery {
   results?: number
   page?: number
   count?: boolean
+  user?: string
 }
 
 /**
@@ -57,8 +58,9 @@ export async function searchVndbVisualNovel(
 
   try {
     const url = `${VNDB_API_BASE}/vn`
-    
-    const query: VndbQuery = {
+
+    // 构造请求体
+    const requestBody: VndbQuery = {
       filters: ['search', '=', keyword],
       fields: 'id,title,alttitle,titles{lang,title,latin,main},released,image.url,image.thumbnail,rating',
       sort: 'searchrank',
@@ -71,7 +73,7 @@ export async function searchVndbVisualNovel(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(query),
+      body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
@@ -97,16 +99,23 @@ export async function searchVndbVisualNovel(
     }
 
     const result: VndbResponse = await response.json()
-    
-    // 转换 VNDB 结果格式为统一格式
+
     const searchResults = (result.results || []).map((vn: any) => {
       // 查找中文标题或主标题
+      const chineseTitle = vn.titles?.find((t: any) => t.lang === 'zh-Hans' || t.lang === 'zh-Hant' || t.lang === 'zh')
+      const japaneseTitle = vn.titles?.find((t: any) => t.lang === 'ja')
+      const englishTitle = vn.titles?.find((t: any) => t.lang === 'en')
       const mainTitle = vn.titles?.find((t: any) => t.main) || vn.titles?.[0]
-      const chineseTitle = vn.titles?.find((t: any) => t.lang === 'zh' || t.lang === 'zh-Hans' || t.lang === 'zh-Hant')
-      
+
+      const finalName = (chineseTitle?.title || chineseTitle?.latin) ||
+        (japaneseTitle?.title || japaneseTitle?.latin) ||
+        (englishTitle?.title || englishTitle?.latin) ||
+        vn.title ||
+        (mainTitle?.latin || mainTitle?.title) || ''
+
       return {
         id: vn.id,
-        name: vn.title || mainTitle?.latin || mainTitle?.title || '',
+        name: finalName,
         name_cn: chineseTitle?.title || chineseTitle?.latin || vn.alttitle || null,
         date: vn.released || null,
         images: {
@@ -118,7 +127,12 @@ export async function searchVndbVisualNovel(
         score: vn.rating ? vn.rating / 10 : undefined, // VNDB 评分是 10-100，转换为 1-10
       }
     }) as VndbSearchResult[]
-    
+
+    if (searchResults.length > 0) {
+      console.log('[VNDB-Search] First item raw:', JSON.stringify(result.results[0]))
+      console.log('[VNDB-Search] First item converted:', JSON.stringify(searchResults[0]))
+    }
+
     return {
       results: searchResults,
       more: result.more || false,
@@ -137,8 +151,8 @@ export async function searchVndbVisualNovel(
 export async function getVisualNovelDetail(id: string): Promise<any> {
   try {
     const url = `${VNDB_API_BASE}/vn`
-    
-    const query: VndbQuery = {
+
+    const requestBody: VndbQuery = {
       filters: ['id', '=', id],
       fields: 'id,title,alttitle,titles{lang,title,latin,main},released,image.url,image.thumbnail,rating,description,length_minutes',
     }
@@ -148,7 +162,7 @@ export async function getVisualNovelDetail(id: string): Promise<any> {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(query),
+      body: JSON.stringify(requestBody),
     })
 
     if (!response.ok) {
@@ -165,3 +179,130 @@ export async function getVisualNovelDetail(id: string): Promise<any> {
   }
 }
 
+/**
+ * 获取用户的视觉小说列表
+ */
+export async function fetchVndbUserList(userId: string): Promise<VndbSearchResult[]> {
+  if (!userId.trim()) {
+    throw new VndbError('请输入用户ID')
+  }
+
+  try {
+    let allResults: VndbSearchResult[] = []
+    let hasMore = true
+    let page = 1
+    const resultsPerPage = 100 // 最大每页数
+
+    // API URL for user list
+    const url = `${VNDB_API_BASE}/ulist`
+
+    while (hasMore) {
+      // 构造请求体
+      const requestBody: VndbQuery = {
+        user: userId,
+        fields: 'id, vn.id, vn.title, vn.alttitle, vn.titles{lang,title,latin,main}, vn.released, vn.image.url, vn.image.thumbnail, vn.rating, vote, labels.id, labels.label',
+        sort: 'vote', // 默认按评分排序，也可以按 'added'
+        reverse: true,
+        results: resultsPerPage,
+        page: page,
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      })
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new VndbError('未找到用户，请检查ID是否正确')
+        }
+        throw new VndbError(`获取用户列表失败: ${response.status}`)
+      }
+
+      const data: VndbResponse = await response.json()
+      const rawResults = data.results || []
+
+      if (rawResults.length === 0) {
+        hasMore = false
+        break
+      }
+
+      // 转换数据格式
+      const convertedResults = rawResults
+        .filter((item: any) => {
+          // 过滤仅有一个 Label 且为 Wishlist 的条目. ID 5 typically means Wishlist if strict.
+          // Label structure: { id, label }
+          if (item.labels && item.labels.length === 1) {
+            const lbl = item.labels[0]
+            if (lbl.label === 'Wishlist' || lbl.id === 5) {
+              return false
+            }
+          }
+          return true
+        })
+        .map((item: any) => {
+          const vn = item.vn
+
+          // Title priority: Chinese > Japanese > English > Main/Original
+          const chineseTitle = vn.titles?.find((t: any) => t.lang === 'zh-Hans' || t.lang === 'zh-Hant' || t.lang === 'zh')
+          const japaneseTitle = vn.titles?.find((t: any) => t.lang === 'ja')
+          const englishTitle = vn.titles?.find((t: any) => t.lang === 'en')
+          const mainTitle = vn.titles?.find((t: any) => t.main) || vn.titles?.[0]
+
+          const finalName = (chineseTitle?.title || chineseTitle?.latin) ||
+            (japaneseTitle?.title || japaneseTitle?.latin) ||
+            (englishTitle?.title || englishTitle?.latin) ||
+            vn.title ||
+            (mainTitle?.latin || mainTitle?.title) || ''
+
+          // 使用用户评分(vote)如果存在，否则使用平均分(rating)
+          const userScore = item.vote ? item.vote / 10 : (vn.rating ? vn.rating / 10 : undefined)
+
+          return {
+            id: vn.id || item.id, // 使用 VN ID (可能在 root 或 vn 对象中)
+            name: finalName,
+            name_cn: chineseTitle?.title || chineseTitle?.latin || vn.alttitle || null,
+            date: vn.released || null,
+            images: {
+              small: vn.image?.thumbnail || vn.image?.url || '',
+              grid: vn.image?.thumbnail || vn.image?.url || '',
+              large: vn.image?.url || '',
+              medium: vn.image?.thumbnail || vn.image?.url || '',
+            },
+            score: userScore,
+          }
+        }) as VndbSearchResult[]
+
+      if (page === 1 && convertedResults.length > 0) {
+        console.log('[VNDB-User] First item raw:', JSON.stringify(rawResults[0]))
+        console.log('[VNDB-User] First item converted:', JSON.stringify(convertedResults[0]))
+      }
+
+      allResults = [...allResults, ...convertedResults]
+
+      // 检查是否有更多页面
+      if (data.more) {
+        page++
+      } else {
+        hasMore = false
+      }
+
+      // 安全限制：防止无限循环或内存溢出，限制最大获取数量（例如 500）
+      // 如果用户需要更多，可以以后增加限制或分页处理
+      if (allResults.length >= 1000) {
+        console.warn('Reached maximum limit of 1000 items, stopping fetch.')
+        hasMore = false
+      }
+    }
+
+    return allResults
+  } catch (error: any) {
+    if (error instanceof VndbError) {
+      throw error
+    }
+    throw new VndbError(`网络错误: ${error.message}`)
+  }
+}

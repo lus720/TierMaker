@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import { searchBangumiAnime, searchBangumiCharacters, getCharactersBySubjectId } from '../utils/bangumi'
+
 import { generateDefaultUrl } from '../utils/url'
 import { saveLastSearchSource, loadLastSearchSource } from '../utils/storage'
 import type { AnimeItem, ApiSource, SearchResult } from '../types'
@@ -212,6 +213,8 @@ async function handleImportCharacters(subjectId: number, event: Event) {
     importingCharacters.value = null
   }
 }
+
+
 
 function handleClose() {
   emit('close')
@@ -490,6 +493,8 @@ function handleImageError(event: Event) {
           本地上传
         </button>
       </div>
+      
+
       
       <!-- 本地上传界面 -->
       <div v-if="apiSource === 'local'" class="local-upload-container">
@@ -787,6 +792,9 @@ function handleImageError(event: Event) {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
+
+
+
 
 .result-image {
   width: 100%;
