@@ -40,6 +40,10 @@ const rowElement = ref<HTMLElement | null>(null)
 let longPressTimer: ReturnType<typeof setTimeout> | undefined
 const pressingItemId = ref<string | number | null>(null)
 
+// 双击检测状态
+const lastClickTime = ref<number>(0)
+const lastClickItemId = ref<string | number | null>(null)
+
 const displayItems = computed(() => {
   const items = [...props.row.items]
   // 给空位设置一个默认名字，以符合"图片+作品名"的格式
@@ -88,6 +92,38 @@ function handleDrop(payload: { item: AnimeItem, fromRowId: string, fromIndex: nu
   }
 }
 
+// 处理容器点击（来自 dragManager 的回调）
+function handleContainerClick(payload: { item: AnimeItem }, event: PointerEvent) {
+  const { item } = payload
+  if (!item || !item.id) return
+
+  // 1. 优先处理修饰键点击 (Ctrl/Shift/RightClick)
+  // 注意：DragManager 已经过滤了非左键，但我们可以检查键盘修饰符
+  if (event.ctrlKey || event.metaKey || event.shiftKey) {
+     const url = getItemUrl(item)
+     if (url) window.open(url, '_blank')
+     return
+  }
+
+  // 2. 双击检测
+  const now = Date.now()
+  const DOUBLE_CLICK_DELAY = 300 // ms
+
+  if (lastClickItemId.value === item.id && (now - lastClickTime.value) < DOUBLE_CLICK_DELAY) {
+      // 触发双击
+      const url = getItemUrl(item)
+      if (url) window.open(url, '_blank')
+      
+      // 重置，防止三击触发两次
+      lastClickTime.value = 0 
+      lastClickItemId.value = null
+  } else {
+      // 记录第一次点击
+      lastClickTime.value = now
+      lastClickItemId.value = item.id
+  }
+}
+
 // 指针按下处理
 function handlePointerDown(item: AnimeItem, index: number, event: PointerEvent) {
   if (!item.id) return // 不拖动空位
@@ -125,6 +161,7 @@ onMounted(() => {
     registerContainer(props.rowId, rowElement.value, {
       containerId: props.rowId,
       onDrop: handleDrop,
+      onClick: handleContainerClick,
       onDragStart: () => {
         // 如果开始拖拽（超过阈值），清除长按定时器
         if (longPressTimer) {
@@ -288,27 +325,11 @@ function handleImageError(event: Event) {
   img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2VlZSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj7lm77niYfliqDovb3lpLHotKU8L3RleHQ+PC9zdmc+'
 }
 
-// 处理图片点击跳转
-function handleImageClick(item: AnimeItem, e: MouseEvent) {
-  // 右键点击或 Ctrl/Cmd+点击直接跳转
-  if (e.ctrlKey || e.metaKey || e.button === 2) {
-    e.preventDefault()
-    e.stopPropagation()
-    const url = getItemUrl(item)
-    if (url) {
-      window.open(url, '_blank')
-    }
-    return
-  }
-  
-  // 双击跳转
-  if (e.detail === 2) {
-    e.preventDefault()
-    e.stopPropagation()
-    const url = getItemUrl(item)
-    if (url) {
-      window.open(url, '_blank')
-    }
+// 处理右键点击跳转
+function handleRightClick(item: AnimeItem) {
+  const url = getItemUrl(item)
+  if (url) {
+    window.open(url, '_blank')
   }
 }
 
@@ -451,8 +472,7 @@ async function handleFileDrop(event: DragEvent) {
           :alt="item.name || ''"
           class="item-image"
           :class="{ 'clickable': getItemUrl(item) }"
-          @click="handleImageClick(item, $event)"
-          @contextmenu="handleImageClick(item, $event)"
+          @contextmenu.prevent="handleRightClick(item)"
           @error="handleImageError"
           @load="handleImageLoad"
           :title="getItemUrl(item) ? '双击或 Ctrl+点击或右键点击跳转到详情页' : ''"

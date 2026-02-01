@@ -7,6 +7,7 @@ export interface DragDropHandler<T = any> {
     onDrop: (payload: T, newIndex: number) => void
     onDragStart?: () => void
     onDragEnd?: () => void
+    onClick?: (payload: T, event: PointerEvent) => void
 }
 
 // 状态管理
@@ -476,12 +477,17 @@ function handlePointerUp(e: PointerEvent) {
 
     // 如果只是 Pending，说明没有发生拖动，视为点击
     if (isPendingDrag) {
+        if (pendingPayload && pendingPayload.fromRowId) {
+            const handler = handlers.get(pendingPayload.fromRowId)
+            // 传递 click 事件以便 handleContainerClick 可以检查修饰键
+            // 注意：PointerEvent 继承自 MouseEvent，所以可以直接用
+            handler?.onClick?.(pendingPayload, e)
+        }
+
         isPendingDrag = false
         pendingItem = null
         pendingPayload = null
         return
-        // 此时原生 click 事件应该正常触发（除非 setPointerCapture 干扰了？）
-        // 我们拭目以待。如果点击失效，需要手动 dispatch click。
     }
 
     if (!isDragging || !currentDragItem) return
