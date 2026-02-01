@@ -7,7 +7,7 @@ import EditItemModal from './components/EditItemModal.vue'
 import ImportModal from './components/ImportModal.vue'
 import ExportModal from './components/ExportModal.vue'
 
-import { initConfigStyles } from './utils/configManager'
+import { initConfigStyles, getSetting } from './utils/configManager'
 import type { Tier, AnimeItem, TierConfig } from './types'
 import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, importAllData, clearItemsAndTitle, resetSettings, loadThemePreference, loadHideItemNames, loadExportScale, DEFAULT_TIER_CONFIGS, generateUuid, type ExportData } from './utils/storage'
 
@@ -619,8 +619,8 @@ function handleResetSettings() {
     const theme = loadThemePreference()
     applyTheme(theme)
     
-    // 重置隐藏作品名
-    hideItemNames.value = false
+    // 重置隐藏作品名（从 config.yaml 读取默认值）
+    hideItemNames.value = getSetting('hide-item-names') ?? false
     
     // 重置导出倍率
     exportScale.value = 4
