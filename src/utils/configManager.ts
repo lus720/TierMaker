@@ -52,7 +52,8 @@ export function saveLocalConfig(config: Partial<ConfigData>): void {
         }
 
         // 允许保存的字段白名单 (只允许用户在 UI 上调整的参数)
-        const ALLOWED_SIZE_KEYS = ['image-width', 'image-height', 'image-aspect-ratio']
+        // 允许保存的字段白名单 (只允许用户在 UI 上调整的参数)
+        const ALLOWED_SIZE_KEYS = ['image-width', 'image-height', 'image-aspect-ratio', 'image-aspect-ratio-text']
 
         // 过滤 config.sizes，只保留白名单内的 key
         const safeSizes: Record<string, any> = {}
@@ -62,6 +63,7 @@ export function saveLocalConfig(config: Partial<ConfigData>): void {
                     safeSizes[key] = config.sizes![key]
                 }
             })
+            console.log('[ConfigManager] saveLocalConfig - safeSizes:', safeSizes)
         }
 
         // 深度合并
@@ -191,9 +193,9 @@ export function initConfigStyles(): void {
 /**
  * 获取指定的尺寸值
  * @param key 尺寸键名（如 'image-width'）
- * @returns 尺寸值（数字，单位为 px）
+ * @returns 尺寸值
  */
-export function getSize(key: string): number {
+export function getSize(key: string): number | string {
     // Register dependency for reactivity
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     configVersion.value

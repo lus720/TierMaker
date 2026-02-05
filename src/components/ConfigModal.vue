@@ -32,6 +32,7 @@ const mouseDownInside = ref(false)
 const imageWidth = ref(100)
 const imageHeight = ref(133)
 const imageAspectRatio = ref(0.75)
+const imageAspectRatioInput = ref('0.75')
 
 // 预设颜色选项
 const presetColors = [
@@ -77,8 +78,11 @@ onMounted(() => {
   compactMode.value = getSetting('compact-mode') || false
   
   // 加载图片尺寸配置
-  imageWidth.value = getSize('image-width') || 100
-  imageAspectRatio.value = getSize('image-aspect-ratio') || 0.75
+  imageWidth.value = getSize('image-width') as number || 100
+  imageAspectRatio.value = getSize('image-aspect-ratio') as number || 0.75
+  const savedText = getSize('image-aspect-ratio-text')
+  console.log('[ConfigModal] Loaded aspect ratio text:', savedText)
+  imageAspectRatioInput.value = (savedText as unknown as string) || imageAspectRatio.value.toString()
   // 计算当前高度
   imageHeight.value = Math.round(imageWidth.value / imageAspectRatio.value)
 })
@@ -227,8 +231,9 @@ function handleResetSettings() {
   clearLocalConfig()
   
   // 重新读取默认配置
-  imageWidth.value = getSize('image-width') || 200 // Default fallback matched to config.yaml
-  imageAspectRatio.value = getSize('image-aspect-ratio') || 0.75
+  imageWidth.value = getSize('image-width') as number || 200 // Default fallback matched to config.yaml
+  imageAspectRatio.value = getSize('image-aspect-ratio') as number || 0.75
+  imageAspectRatioInput.value = imageAspectRatio.value.toString()
   imageHeight.value = Math.round(imageWidth.value / imageAspectRatio.value)
   
   // Update UI values immediately
@@ -281,24 +286,60 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
   if (h < 10) h = 10
   if (r < 0.1) r = 0.1
   
+  // Calculate new values based on source
   if (source === 'ratio') {
+    // Parse the ratio input
+    let newRatio = imageAspectRatio.value
+    
+    // Try to parse fraction/ratio format (e.g. "16/9" or "4:3" or "16：9")
+    const ratioStr = imageAspectRatioInput.value.trim()
+    const fractionMatch = ratioStr.match(/^(\d+(?:\.\d+)?)\s*[:\/：]\s*(\d+(?:\.\d+)?)$/)
+    
+    if (fractionMatch) {
+      const num = parseFloat(fractionMatch[1])
+      const den = parseFloat(fractionMatch[2])
+      if (den !== 0) {
+        newRatio = num / den
+      }
+    } else {
+      // Try to parse as normal number
+      const num = parseFloat(ratioStr)
+      if (!isNaN(num) && num > 0) {
+        newRatio = num
+      }
+    }
+    
+    if (newRatio < 0.1) newRatio = 0.1
+    imageAspectRatio.value = newRatio
+    
     // 改变比例：保持宽度，重算高度
-    h = Math.round(w / r)
+    h = Math.round(w / newRatio)
     imageHeight.value = h
-  } else if (source === 'width') {
-    // 改变宽度：保持比例，重算高度
-    h = Math.round(w / r)
-    imageHeight.value = h
-  } else if (source === 'height') {
-    // 改变高度：保持比例，重算宽度 (Width = Height * Ratio)
-    w = Math.round(h * r)
-    imageWidth.value = w
+  } else {
+    // Other sources changes, update ratio input display to match new ratio if needed
+    // But usually we just keep the input as is unless it's a recalibration
+    if (source === 'width') {
+      // 改变宽度：保持比例，重算高度
+      h = Math.round(w / r)
+      imageHeight.value = h
+    } else if (source === 'height') {
+      // 改变高度：保持比例，重算宽度 (Width = Height * Ratio)
+      w = Math.round(h * r)
+      imageWidth.value = w
+    }
   }
   
-  updateSizes({
+  const updates: Record<string, any> = {
     'image-width': w,
-    'image-aspect-ratio': r
-  })
+    'image-aspect-ratio': imageAspectRatio.value
+  }
+
+  // Only save the text input if the source is 'ratio' (meaning user typed it)
+  if (source === 'ratio') {
+    updates['image-aspect-ratio-text'] = imageAspectRatioInput.value
+  }
+
+  updateSizes(updates)
 }
 </script>
 
@@ -388,15 +429,13 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
           <label for="image-aspect-ratio">宽高比 (Width/Height):</label>
           <input
             id="image-aspect-ratio"
-            v-model.number="imageAspectRatio"
-            type="number"
-            step="0.01"
-            min="0.1"
+            v-model="imageAspectRatioInput"
+            type="text"
             class="config-input"
             style="max-width: 100px;"
-            @input="handleImageUtilChange('ratio')"
+            @change="handleImageUtilChange('ratio')"
           />
-          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">(如 0.75 即 3:4)</span>
+          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">(支持小数或 16:9, 16：9 格式)</span>
         </div>
         
         <div class="config-item-row" style="margin-top: 10px;">
