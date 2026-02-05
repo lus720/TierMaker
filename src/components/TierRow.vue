@@ -199,8 +199,8 @@ function handleItemClick(index: number) {
 }
 
 function getImageStyle(item: AnimeItem) {
-  const containerWidth = getSize('image-width') || 100
-  const containerHeight = getSize('image-height') || 133
+  const containerWidth = Number(getSize('image-width')) || 100
+  const containerHeight = Number(getSize('image-height')) || 133
   
   // Default style (Cover or unmodified)
   const baseStyle: any = {
@@ -281,9 +281,9 @@ function handleImageLoad(event: Event) {
      // If we are in 'auto' mode and want to smart-center based on aspect ratio:
      const crop = item.cropPosition || 'auto'
      if (crop === 'auto') {
-        const containerWidth = getSize('image-width') || 100
-        const containerHeight = getSize('image-height') || 133
-        const targetRatio = getSize('image-aspect-ratio') || (containerWidth / containerHeight)
+        const containerWidth = Number(getSize('image-width')) || 100
+        const containerHeight = Number(getSize('image-height')) || 133
+        const targetRatio = Number(getSize('image-aspect-ratio')) || (containerWidth / containerHeight)
         const naturalRatio = img.naturalWidth / img.naturalHeight
         
         if (naturalRatio > targetRatio) {

@@ -93,9 +93,9 @@ function updatePreviewCrop() {
   const naturalWidth = originalImg.naturalWidth
   const naturalHeight = originalImg.naturalHeight
   const naturalRatio = naturalWidth / naturalHeight
-  const previewWidth = getSize('image-width') || 100
-  const previewHeight = getSize('image-height') || 133
-  const configRatio = getSize('image-aspect-ratio')
+  const previewWidth = Number(getSize('image-width')) || 100
+  const previewHeight = Number(getSize('image-height')) || 133
+  const configRatio = Number(getSize('image-aspect-ratio')) || 0
   const targetRatio = configRatio || (previewWidth / previewHeight)
   
   // 确定裁剪位置（使用 cropPosition，不再使用 previewCropPosition）
@@ -178,9 +178,9 @@ function updatePreviewCrop() {
     
     // ✅ 使用与实际裁剪完全相同的逻辑计算裁剪区域（像素级精确）
     // 目标尺寸：width × height (targetRatio 比例)
-    const containerWidth = getSize('image-width') || 100
-    const containerHeight = getSize('image-height') || 133
-    const configRatio = getSize('image-aspect-ratio')
+    const containerWidth = Number(getSize('image-width')) || 100
+    const containerHeight = Number(getSize('image-height')) || 133
+    const configRatio = Number(getSize('image-aspect-ratio')) || 0
     const targetAspectRatio = configRatio || (containerWidth / containerHeight)
     
     let sourceX = 0
@@ -707,9 +707,9 @@ function updateCropPositionFromMask(maskLeft: number, maskTop: number) {
   
   
   // 计算目标尺寸
-  const containerWidth = getSize('image-width') || 100
-  const containerHeight = getSize('image-height') || 133
-  const configRatio = getSize('image-aspect-ratio')
+  const containerWidth = Number(getSize('image-width')) || 100
+  const containerHeight = Number(getSize('image-height')) || 133
+  const configRatio = Number(getSize('image-aspect-ratio')) || 0
   const targetAspectRatio = configRatio || (containerWidth / containerHeight)
   
   let sourceWidth = 0

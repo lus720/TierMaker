@@ -64,8 +64,8 @@ function updateMaxLabelWidth() {
       // 获取实际的样式值
       const containerStyle = window.getComputedStyle(sampleLabel)
       const textStyle = window.getComputedStyle(sampleText)
-      const paddingLeft = parseFloat(containerStyle.paddingLeft) || getSize('label-padding-x') || 10
-      const paddingRight = parseFloat(containerStyle.paddingRight) || getSize('label-padding-x') || 10
+      const paddingLeft = parseFloat(containerStyle.paddingLeft) || Number(getSize('label-padding-x')) || 10
+      const paddingRight = parseFloat(containerStyle.paddingRight) || Number(getSize('label-padding-x')) || 10
       const padding = paddingLeft + paddingRight
       
       // 创建临时文本元素来测量文本宽度
@@ -108,7 +108,7 @@ function updateMaxLabelWidth() {
       document.body.removeChild(tempText)
       
       // 设置最大宽度（至少保留最小宽度）
-      const minWidth = getSize('label-min-width') || 80
+      const minWidth = Number(getSize('label-min-width')) || 80
       maxLabelWidth.value = Math.max(maxWidth, minWidth)
     })
   })
