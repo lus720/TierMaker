@@ -90,10 +90,12 @@ function applySmartCropToImage(img: HTMLImageElement) {
     }
     
     const ratio = img.naturalWidth / img.naturalHeight
-    const targetRatio = 0.75
     
-    const width = getSize('image-width') || 100
-    const height = getSize('image-height') || 133
+    const width = Number(getSize('image-width')) || 100
+    const height = Number(getSize('image-height')) || 133
+    // Calculate target ratio dynamically from config, fallback to 0.75 if something is wrong (shouldn't happen)
+    const targetRatio = (width && height) ? (width / height) : 0.75
+
     img.style.objectFit = 'cover'
     img.style.width = `${width}px`
     img.style.height = `${height}px`
@@ -143,9 +145,10 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   const naturalWidth = img.naturalWidth
   const naturalHeight = img.naturalHeight
   const naturalAspectRatio = naturalWidth / naturalHeight
-  const targetAspectRatio = 0.75
-  const containerWidth = (getSize('image-width') || 100) * scale
-  const containerHeight = (getSize('image-height') || 133) * scale
+  
+  const containerWidth = (Number(getSize('image-width')) || 100) * scale
+  const containerHeight = (Number(getSize('image-height')) || 133) * scale
+  const targetAspectRatio = containerWidth / containerHeight
   
   const canvas = document.createElement('canvas')
   canvas.width = containerWidth
