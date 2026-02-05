@@ -579,10 +579,16 @@ async function handleClearAll() {
         items: [],
       }],
     }))
-    await saveTierData([...tiers.value, ...unrankedTiers.value])
-    
     // 清空备选框
+    unrankedTiers.value = [{
+      id: 'unranked',
+      rows: [{
+        id: 'unranked-row-0',
+        items: []
+      }]
+    }]
 
+    await saveTierData([...tiers.value, ...unrankedTiers.value])
     
     // 重置标题和字体大小
     title.value = 'Tier List'
