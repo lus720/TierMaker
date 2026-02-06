@@ -2,7 +2,7 @@
 import { computed, ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { registerContainer, unregisterContainer, startDrag, cancelDrag } from '../utils/dragManager'
 import { getItemUrl } from '../utils/url'
-import { getSize, getConfig } from '../utils/configManager'
+import { getSize, getConfig, getSetting } from '../utils/configManager'
 import { generateUuid } from '../utils/storage'
 import { adaptCropToRatio, normalizeCropResolution } from '../utils/cropUtils'
 import type { TierRow, AnimeItem } from '../types'
@@ -268,9 +268,20 @@ function getImageStyle(item: AnimeItem) {
      const targetRatio = Number(getSize('image-aspect-ratio')) || (containerWidth / containerHeight)
      const naturalRatio = item.naturalWidth / item.naturalHeight
      
-     return {
-        ...baseStyle,
-        objectPosition: naturalRatio > targetRatio ? 'center center' : 'center top'
+     // 默认长图顶部对齐，宽图居中对齐
+     if (naturalRatio > targetRatio) {
+        // 宽图：始终水平居中
+        return {
+           ...baseStyle,
+           objectPosition: 'center center'
+        }
+     } else {
+        // 长图：根据配置决定是顶部对齐还是从居中裁剪
+        const tallImageMode = getSetting('tall-image-crop-mode') || 'center-top'
+        return {
+           ...baseStyle,
+           objectPosition: tallImageMode === 'center-top' ? 'center top' : 'center center'
+        }
      }
   }
   

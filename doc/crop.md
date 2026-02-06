@@ -29,12 +29,37 @@
 
 **来源：** `src/components/TierRow.vue`
 
-### 2.1 显示方式：CSS 裁剪（无 canvas）
+### 2.1 核心函数：`getImageStyle(item)`
+
+**位置：** `src/components/TierRow.vue` 第 201 行
+
+**调用时机：**
+
+- 模板中 `<img :style="getImageStyle(item)">` 绑定（第 479 行）
+- 每次 Vue 组件渲染/重渲染时调用
+- 触发重渲染的操作包括：
+  - 图片加载完成（`handleImageLoad` 更新 `naturalWidth/Height`）
+  - 拖拽排序（`reorder` 事件）
+  - 添加/删除条目
+  - 编辑裁剪位置保存
+
+**工作流程：**
+
+```text
+getImageStyle(item)
+├─ 自定义裁剪对象？ → normalizeCropResolution → adaptCropToRatio → CSS absolute 定位
+├─ 预设字符串（非 auto）？ → object-position: 预设值
+└─ auto 模式？
+   ├─ naturalWidth/Height 已就绪？ → 根据宽高比计算 object-position
+   └─ 未就绪？ → visibility: hidden（等待图片加载）
+```
+
+### 2.2 显示方式：CSS 裁剪（无 canvas）
 
 - 容器 `.item-image-container`：`position: relative` + `overflow: hidden`
 - 图片样式由 `getImageStyle()` 生成
 
-### 2.2 精确裁剪计算
+### 2.3 精确裁剪计算
 
 1. 若 `naturalWidth/Height` 未就绪，则临时 `visibility: hidden`
 2. 对裁剪对象执行：
@@ -48,10 +73,10 @@
    - `top = -sourceY * scale`
    - 图片用 `position: absolute` 放入容器
 
-### 2.3 预设裁剪 / auto
+### 2.4 预设裁剪 / auto
 
 - 预设值直接使用 `object-fit: cover` + `object-position`
-- `auto` 在 `@load` 时通过 `naturalRatio` 与 `targetRatio` 对比判断：
+- `auto` 模式在 `getImageStyle()` 中通过 `naturalRatio` 与 `targetRatio` 对比判断：
   - 宽图 -> `center center`
   - 长图 -> `center top`
 
@@ -70,12 +95,20 @@
 
 在 `updatePreviewCrop()` 中：
 
-1. 获取配置尺寸：`image-width` / `image-height` / `image-aspect-ratio`
-2. 若存在自定义裁剪对象：
-   - **normalizeCropResolution**：修正"保存时分辨率"与"当前加载分辨率"不一致的问题
-   - **adaptCropToRatio**：当设置的宽高比发生变化时，以裁剪中心为基准扩展宽/高，使其适配新比例
-3. 计算遮罩框在屏幕坐标中的位置，使用 DPR 像素对齐
-4. 如发现裁剪对象需要适配，会自动更新 `cropPosition`（避免白框和最终效果不一致）
+1. **配置加载**：获取 `image-width` / `image-height` / `image-aspect-ratio` 等配置。
+2. **分辨率规范化 ( normalizeCropResolution )**：
+   - 解决"保存时分辨率"（如原图 2000px）与"当前加载分辨率"（如预览 500px）不一致的问题。
+3. **比例适配 ( adaptCropToRatio )**：
+   - 当宽高比配置变化时（如 0.75 -> 1.0），以裁剪中心为基准扩展或收缩裁剪区域，使其适配新比例。
+4. **裁剪框（白框）渲染**：
+   - 计算高亮区域在预览容器中的像素位置。
+   - `expandUnit = 1`：白框向外扩张 1 像素，包裹高亮区。
+   - `snap()`：执行设备像素对齐（`round(v * dpr) / dpr`），防止模糊。
+   - 最终通过 `absolute` 定位渲染白框。
+5. **遮罩层 ( Overlay )**：
+   - 使用 CSS `clip-path` 创建反向遮罩，覆盖全图但挖空（exclude）白框区域，使用户能清晰分辨裁剪结果。
+6. **自动修正**：
+   - 如发现裁剪对象需要适配新比例，会自动更新 `cropPosition` 并触发重绘。
 
 ### 3.3 保存
 

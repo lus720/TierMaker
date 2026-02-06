@@ -2,7 +2,7 @@
 import { computed, ref, toRaw, watch, onMounted, nextTick, onUnmounted } from 'vue'
 import type { AnimeItem, CropPosition } from '../types'
 import { generateDefaultUrl } from '../utils/url'
-import { getSize } from '../utils/configManager'
+import { getSize, getSetting } from '../utils/configManager'
 import { adaptCropToRatio, normalizeCropResolution } from '../utils/cropUtils'
 
 const props = defineProps<{
@@ -103,7 +103,9 @@ function updatePreviewCrop() {
   if (cropPos === 'auto') {
     // 自动模式：根据图片宽高比决定
     if (naturalRatio < targetRatio) {
-      cropPos = 'center top'
+       // 长图：根据配置决定
+       const tallImageMode = getSetting('tall-image-crop-mode') || 'center-top'
+       cropPos = tallImageMode === 'center-top' ? 'center top' : 'center center'
     } else {
       cropPos = 'center center'
     }
@@ -266,8 +268,8 @@ function updatePreviewCrop() {
       } else if (cropPos === 'center bottom') {
         sourceY = naturalHeight - sourceHeight // 底部
       } else {
-        // center center 或 auto（默认顶部）
-        sourceY = 0 // 保留顶部
+        // center center
+        sourceY = (naturalHeight - sourceHeight) / 2 // 垂直居中
       }
       
       sourceX = 0
@@ -280,6 +282,13 @@ function updatePreviewCrop() {
     const highlightWidth = sourceWidth * scale
     const highlightHeight = sourceHeight * scale
     
+    // =================================================================================
+    // 裁剪框（白框）渲染逻辑
+    // =================================================================================
+    // 1. maskLeft/Top 是高亮区域相对于 padding-box 原点的坐标
+    // 2. expandUnit 是向外扩张的像素值，确保白框刚好包围高亮区域
+    // 3. snap() 函数用于像素对齐，确保渲染清晰
+    
     // ✅ 高亮区域确定后，向外扩张一个单位就得到遮罩框（白框）
     const expandUnit = 1 // 向外扩张一个单位
     const maskLeft = Math.max(0, highlightLeft - expandUnit)
@@ -290,8 +299,6 @@ function updatePreviewCrop() {
     const maskHeight = maskBottom - maskTop
     
     // 设置白框的位置和大小（像素级精确）
-    // 白框位置是高亮区域向外扩张一个单位后的位置
-    // ✅ 同样使用像素对齐，确保白框和红色标记点使用相同的坐标系统
     const maskLeftSnapped = snap(imageLeft + maskLeft)
     const maskTopSnapped = snap(imageTop + maskTop)
     const maskWidthSnapped = snap(maskWidth)
@@ -304,13 +311,12 @@ function updatePreviewCrop() {
       height: `${maskHeightSnapped}px`,
     }
     
-    // ✅ 计算遮罩层（加暗未选中部分）
-    // 遮罩层覆盖整个容器，但排除白框区域（使用 clip-path）
-    // 获取容器的实际尺寸（相对于 padding-box）
+    // ✅ 计算遮罩层（半透明黑色区域）
+    // 使用 CSS clip-path 创建反向遮罩：覆盖整个图片，但"挖空"白框区域
+    // 这样用户能清楚看到哪些部分会被保留（亮色），哪些会被裁剪（暗色）
     const containerContentWidth = containerRect.width - container.clientLeft * 2
     const containerContentHeight = containerRect.height - container.clientTop * 2
     
-    // 计算白框在容器中的百分比位置（相对于容器内容区域）
     const maskLeftPercent = (maskLeftSnapped / containerContentWidth) * 100
     const maskTopPercent = (maskTopSnapped / containerContentHeight) * 100
     const maskRightPercent = ((maskLeftSnapped + maskWidthSnapped) / containerContentWidth) * 100

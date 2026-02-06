@@ -33,6 +33,7 @@ const imageWidth = ref(100)
 const imageHeight = ref(133)
 const imageAspectRatio = ref(0.75)
 const imageAspectRatioInput = ref('0.75')
+const tallImageCropMode = ref<'center-top' | 'center-center'>('center-top')
 
 // 预设颜色选项
 const presetColors = [
@@ -76,6 +77,7 @@ onMounted(() => {
   themePreference.value = loadThemePreference()
   hideItemNames.value = loadHideItemNames()
   compactMode.value = getSetting('compact-mode') || false
+  tallImageCropMode.value = getSetting('tall-image-crop-mode') || 'center-top'
   
   // 加载图片尺寸配置
   imageWidth.value = getSize('image-width') as number || 100
@@ -176,6 +178,14 @@ function handleCompactModeChange() {
   saveLocalConfig({
     settings: {
       'compact-mode': compactMode.value
+    }
+  })
+}
+
+function handleTallImageCropModeChange() {
+  saveLocalConfig({
+    settings: {
+      'tall-image-crop-mode': tallImageCropMode.value
     }
   })
 }
@@ -420,6 +430,19 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             />
             <span>紧凑模式 (无间距)</span>
           </label>
+        </div>
+        
+        <div class="config-item-row" style="margin-top: 15px;">
+          <label for="tall-image-crop-mode">长图裁剪模式:</label>
+          <select
+            id="tall-image-crop-mode"
+            v-model="tallImageCropMode"
+            @change="handleTallImageCropModeChange"
+            class="config-select"
+          >
+            <option value="center-top">顶部对齐 (显示头部)</option>
+            <option value="center-center">居中对齐</option>
+          </select>
         </div>
       </div>
       
