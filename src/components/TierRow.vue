@@ -263,8 +263,22 @@ function getImageStyle(item: AnimeItem) {
      }
   }
   
-  // Auto
-  return baseStyle
+  // Auto: 根据宽高比智能选择裁剪位置
+  if (item.naturalWidth && item.naturalHeight) {
+     const targetRatio = Number(getSize('image-aspect-ratio')) || (containerWidth / containerHeight)
+     const naturalRatio = item.naturalWidth / item.naturalHeight
+     
+     return {
+        ...baseStyle,
+        objectPosition: naturalRatio > targetRatio ? 'center center' : 'center top'
+     }
+  }
+  
+  // naturalWidth/Height 未就绪时，先隐藏避免闪烁
+  return {
+     ...baseStyle,
+     visibility: 'hidden'
+  }
 }
 
 function handleImageLoad(event: Event) {
@@ -274,24 +288,10 @@ function handleImageLoad(event: Event) {
   const item = itemId ? props.row.items.find(i => String(i.id) === String(itemId)) : null
   
   if (item) {
-     // Store natural dimensions permanently
+     // 更新 naturalWidth/Height，这会触发 Vue 响应式更新
+     // getImageStyle() 会使用这些值计算正确的裁剪位置
      item.naturalWidth = img.naturalWidth
      item.naturalHeight = img.naturalHeight
-     
-     // If we are in 'auto' mode and want to smart-center based on aspect ratio:
-     const crop = item.cropPosition || 'auto'
-     if (crop === 'auto') {
-        const containerWidth = Number(getSize('image-width')) || 100
-        const containerHeight = Number(getSize('image-height')) || 133
-        const targetRatio = Number(getSize('image-aspect-ratio')) || (containerWidth / containerHeight)
-        const naturalRatio = img.naturalWidth / img.naturalHeight
-        
-        if (naturalRatio > targetRatio) {
-           img.style.objectPosition = 'center center'
-        } else {
-           img.style.objectPosition = 'center top'
-        }
-     }
   }
 }
 

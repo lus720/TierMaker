@@ -13,7 +13,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    port: 3000,
     open: true,
   },
   // 配置 base path，用于 GitHub Pages 部署
