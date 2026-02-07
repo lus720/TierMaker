@@ -106,70 +106,76 @@ export async function fetchSeasons(startSeason?: string): Promise<string[]> {
  * @param season 季度，格式如 2024q1
  * @returns 动漫条目列表
  */
+// Helper to fetch with fallback proxies
+async function fetchWithFallback(targetUrl: string): Promise<any> {
+    const proxies = [
+        // Primary: corsproxy.io (usually faster/more reliable)
+        (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+        // Fallback: allorigins.win
+        (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`
+    ]
+
+    let lastError: any
+
+    for (const proxyGen of proxies) {
+        const proxyUrl = proxyGen(targetUrl)
+        try {
+            console.log('[BangumiList] Attempting fetch via:', proxyUrl)
+            const response = await fetch(proxyUrl)
+
+            if (!response.ok) {
+                console.warn(`[BangumiList] Proxy returned status ${response.status}`)
+                throw new Error(`HTTP ${response.status}`)
+            }
+
+            const text = await response.text()
+            try {
+                const data = JSON.parse(text)
+                return data
+            } catch (jsonError) {
+                console.warn('[BangumiList] JSON parse failed', jsonError)
+                throw new Error('Invalid JSON response')
+            }
+        } catch (e) {
+            console.warn('[BangumiList] Proxy attempt failed:', e)
+            lastError = e
+        }
+    }
+
+    throw lastError || new Error('All proxies failed')
+}
+
+/**
+ * 获取指定季度的动漫列表
+ * @param season 季度，格式如 2024q1
+ * @returns 动漫条目列表
+ */
 export async function fetchSeasonAnime(season: string): Promise<BangumiListItem[]> {
     console.log('[BangumiList] fetchSeasonAnime called, season:', season)
 
     const url = `${API_BASE_URL}/bangumi/archive/${season}`
     console.log('[BangumiList] Constructed URL:', url)
 
-    // 使用 CORS 代理绕过跨域限制
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
-    console.log('[BangumiList] Proxy URL:', proxyUrl)
-
-    console.log('[BangumiList] About to fetch...')
-    const response = await fetch(proxyUrl)
-    console.log('[BangumiList] Response received')
-    console.log('[BangumiList] Response.ok:', response.ok)
-    console.log('[BangumiList] Response.status:', response.status)
-    console.log('[BangumiList] Response.statusText:', response.statusText)
-    console.log('[BangumiList] Response.headers:', [...response.headers.entries()])
-
-    if (!response.ok) {
-        console.error('[BangumiList] Response not ok, throwing error')
-        throw new Error(`获取季度动漫失败: ${response.status} ${response.statusText}`)
-    }
-
-    console.log('[BangumiList] Getting response text...')
-    const text = await response.text()
-    console.log('[BangumiList] Response text length:', text.length)
-    console.log('[BangumiList] Response text (first 500 chars):', text.substring(0, 500))
-    console.log('[BangumiList] Response text (last 200 chars):', text.substring(text.length - 200))
-
-    console.log('[BangumiList] Parsing JSON...')
     let data
     try {
-        data = JSON.parse(text)
-        console.log('[BangumiList] JSON parsed successfully')
-    } catch (e) {
-        console.error('[BangumiList] JSON parse failed:', e)
-        console.error('[BangumiList] Raw text:', text)
-        throw new Error('API 返回的数据格式错误')
+        data = await fetchWithFallback(url)
+    } catch (e: any) {
+        console.error('[BangumiList] All fetch attempts failed:', e)
+        throw new Error(`获取季度动漫失败: ${e.message}`)
     }
 
+    console.log('[BangumiList] content fetched, processing data...')
     console.log('[BangumiList] data type:', typeof data)
-    console.log('[BangumiList] data is null:', data === null)
-    console.log('[BangumiList] data is undefined:', data === undefined)
-    console.log('[BangumiList] Array.isArray(data):', Array.isArray(data))
 
     if (typeof data === 'object' && data !== null) {
-        console.log('[BangumiList] Object.keys(data):', Object.keys(data))
-        console.log('[BangumiList] Object.keys(data).length:', Object.keys(data).length)
-
         // 检查是否有 items 属性
-        if ('items' in data) {
-            console.log('[BangumiList] data.items exists')
-            console.log('[BangumiList] data.items type:', typeof data.items)
-            console.log('[BangumiList] data.items is array:', Array.isArray(data.items))
-            if (Array.isArray(data.items)) {
-                console.log('[BangumiList] data.items.length:', data.items.length)
-                console.log('[BangumiList] data.items[0]:', data.items[0])
-            }
+        if ('items' in data && Array.isArray(data.items)) {
+            console.log('[BangumiList] Returning data.items array')
+            return data.items
         }
     }
 
     if (Array.isArray(data)) {
-        console.log('[BangumiList] data.length:', data.length)
-        console.log('[BangumiList] data[0]:', data[0])
         console.log('[BangumiList] Returning data array')
         return data
     }
