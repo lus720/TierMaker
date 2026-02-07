@@ -109,8 +109,8 @@ export async function fetchSeasons(startSeason?: string): Promise<string[]> {
 // Helper to fetch with fallback proxies
 async function fetchWithFallback(targetUrl: string): Promise<any> {
     const proxies = [
-        // Primary: corsproxy.io (usually faster/more reliable)
-        (u: string) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+        // Primary: codetabs (reliable, free)
+        (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
         // Fallback: allorigins.win
         (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`
     ]

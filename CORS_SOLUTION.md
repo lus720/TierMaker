@@ -1,118 +1,84 @@
-# CORS 解决方案说明
+# 代理服务与 CORS 解决方案说明
 
-## 问题背景
+本项目使用代理服务来解决由于浏览器的同源策略（SOP）导致的跨域资源共享（CORS）问题。
 
-在导出图片和 PDF 时，如果直接使用来自不同域名的图片（如 Bangumi、VNDB 等），会遇到 CORS（跨域资源共享）问题。浏览器会阻止跨域图片被 `html2canvas` 和 `jsPDF` 等库读取，导致导出失败或图片显示为空白。
+## 为什么需要使用代理？
 
-## 解决方案
+在浏览器端直接请求第三方 API（如 Bangumi 归档数据） or 加载第三方图片（用于 Canvas 导出）时，如果目标服务器没有设置允许跨域的响应头（`Access-Control-Allow-Origin`），浏览器会拦截响应，导致请求失败。
 
-本项目使用 **wsrv.nl** 作为 CORS 代理服务来解决跨域问题。
+为了绕过这个限制，我们需要使用 **CORS 代理服务**。代理服务的工作原理是：
 
-### 核心实现
+1. 客户端向代理服务发送请求，将目标 URL 作为参数传递。
+2. 代理服务在服务端向目标 URL 发起请求（服务端不受 CORS 限制）。
+3. 代理服务收到响应后，在响应头中添加 `Access-Control-Allow-Origin: *`。
+4. 代理服务将带有 CORS 头的数据转发回客户端。
 
-#### 1. CORS 代理函数
+## 使用的代理服务
 
-在 `src/App.vue` 中定义了 `getCorsProxyUrl` 函数：
+本项目根据不同的用途，使用了以下代理服务：
+
+### 1. API 数据获取 (Bangumi 归档)
+
+用于获取 Bangumi 的季度番剧列表数据 (JSON)。
+
+* **首选**: **CodeTabs** (`https://api.codetabs.com/v1/proxy`)
+  * **理由**: 免费，稳定，支持 JSON 数据透传。
+* **备选**: **AllOrigins** (`https://api.allorigins.win/raw`)
+  * **理由**: 作为备用，但有时不稳定或返回 502 错误。
+* **已弃用**: **CorsProxy.io** (`https://corsproxy.io/`)
+  * **理由**: 该服务现已收费，不再适合本项目。
+
+### 2. 图片资源获取 (导出功能)
+
+用于在导出 TierList 图片或 PDF 时，加载跨域图片并在 Canvas 中绘制。
+
+* **首选**: **wsrv.nl** (`https://wsrv.nl/`)
+  * **理由**: 专为图片优化，性能好，支持格式转换，并且可以自动添加正确的 CORS 头。我们通常添加 `output=png` 参数以确保格式兼容。
+
+## 代码位置
+
+### API 代理逻辑
+
+位于 `src/utils/bangumiList.ts` 中的 `fetchWithFallback` 函数：
 
 ```typescript
-// 使用CORS代理获取图片（使用 wsrv.nl，专门用于图片处理，更稳定）
+// src/utils/bangumiList.ts
+
+async function fetchWithFallback(targetUrl: string): Promise<any> {
+    const proxies = [
+        // Primary: codetabs (reliable, free)
+        (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+        // Fallback: allorigins.win
+        (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`
+    ]
+    // ... 轮询尝试代理 ...
+}
+```
+
+### 图片代理逻辑
+
+位于 `src/App.vue` 中的 `getCorsProxyUrl` 函数：
+
+```typescript
+// src/App.vue
+
 function getCorsProxyUrl(url: string): string {
-  if (!url) return ''
-  // 如果已经是 wsrv，直接返回
-  if (url.includes('wsrv.nl')) return url
-  
-  // 关键优化：移除 t=... 时间戳，允许浏览器缓存图片
-  // output=png 保证透明度和兼容性
+  // ...
+  // 使用 wsrv.nl 作为图片代理
   return `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=png`
 }
 ```
 
-#### 2. 导出时的处理流程
-
-在导出图片和 PDF 时，使用 `html2canvas` 的 `onclone` 回调函数，在克隆的文档中将所有图片 URL 替换为 CORS 代理 URL：
-
-```typescript
-onclone: async (clonedDoc) => {
-  // ... 其他处理 ...
-  
-  // 将所有图片URL替换为CORS代理URL
-  const allImages = clonedDoc.querySelectorAll('img') as NodeListOf<HTMLImageElement>
-  
-  allImages.forEach((img) => {
-    const originalSrc = img.getAttribute('data-original-src') || img.getAttribute('src')
-    
-    // 替换为CORS代理URL
-    if (originalSrc && !originalSrc.startsWith('data:') && !originalSrc.includes('wsrv.nl')) {
-      const proxyUrl = getCorsProxyUrl(originalSrc)
-      img.src = proxyUrl
-      img.crossOrigin = 'anonymous'  // 设置跨域属性
-    }
-    
-    // 等待图片加载完成后再继续
-    // ...
-  })
-}
-```
-
-#### 3. html2canvas 配置
-
-在 `html2canvas` 配置中启用 CORS 支持：
-
-```typescript
-const canvas = await html2canvas(appContentRef.value, {
-  scale: 2,
-  useCORS: true,  // 开启跨域支持，利用 wsrv.nl 代理的 CORS Header
-  allowTaint: false,
-  // ...
-})
-```
-
-## 工作原理
-
-1. **wsrv.nl 服务**：这是一个公共的图片代理服务，它会：
-   - 接收原始图片 URL 作为参数
-   - 从原始服务器获取图片
-   - 添加适当的 CORS 响应头（`Access-Control-Allow-Origin: *`）
-   - 返回可跨域访问的图片
-
-2. **URL 格式**：
-   ```
-   https://wsrv.nl/?url={原始图片URL}&output=png
-   ```
-
-3. **优势**：
-   - ✅ 无需后端服务器
-   - ✅ 无需配置代理
-   - ✅ 支持所有图片格式
-   - ✅ 自动处理 CORS 头
-   - ✅ 可以缓存图片（通过移除时间戳参数）
-
 ## 注意事项
 
-1. **性能考虑**：
-   - 图片会先通过 wsrv.nl 代理，可能略微增加加载时间
-   - 已优化：移除时间戳参数，允许浏览器缓存代理后的图片
+1. **稳定性**: 免费公共代理服务可能存在不稳定性。代码中实现了 `fetchWithFallback` 机制，如果首选代理失败，会自动尝试备选代理。
+2. **安全性**: 避免通过公共代理传输敏感数据（如 Token、密码）。本项目仅用于获取公开的番剧数据和图片，不涉及敏感信息。
+3. **缓存**: `wsrv.nl` 会对图片进行缓存，这有助于提升性能。但在调试时可能需要注意缓存带来的影响（虽然我们移除了时间戳参数以利用缓存）。
+4. **AllOrigins 限制**: `allorigins` 的 `raw` 端点有时会因为服务端限制而返回 403 或 502，因此仅作为备用。
 
-2. **数据 URI**：
-   - 本地上传的图片（base64 data URI）不需要代理
-   - 代码中会跳过 `data:` 开头的 URL
+## 参考链接
 
-3. **已代理的 URL**：
-   - 如果 URL 已经包含 `wsrv.nl`，直接返回，避免重复代理
-
-4. **错误处理**：
-   - 如果图片加载失败，会显示占位图
-   - 不会因为单个图片失败而影响整个导出流程
-
-## 代码位置
-
-- **CORS 代理函数**：`src/App.vue` 第 1081-1090 行
-- **导出图片处理**：`src/App.vue` 第 650-730 行（`handleExportImage`）
-- **导出 PDF 处理**：`src/App.vue` 第 905-990 行（`handleExportPDF`）
-
-## 参考
-
-- wsrv.nl 官网：https://wsrv.nl/
-- html2canvas 文档：https://html2canvas.hertzen.com/
-- CORS 规范：https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS
-
+* [CodeTabs CORS Proxy](https://codetabs.com/cors/cors-proxy.html)
+* [wsrv.nl (Image Proxy)](https://wsrv.nl/)
+* [AllOrigins](https://allorigins.win/)
+* [MDN: CORS (跨源资源共享)](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/CORS)
