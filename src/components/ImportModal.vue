@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { fetchVndbUserList } from '../utils/vndb'
 import { fetchSeasonAnime, formatSeasonName } from '../utils/bangumiList'
+import { getDefaultImage } from '../utils/constants'
 import type { AnimeItem } from '../types'
 import type { ExportData } from '../utils/storage'
 
@@ -87,15 +88,33 @@ async function handleVndbImport() {
        const itemId = `vndb_${result.id}`
        const defaultUrl = `https://vndb.org/${result.id}`
        
+       let finalImage: string | Blob = imageUrl
+       let finalOriginalImage: string | Blob = imageUrl
+       let itemBlob: Blob | undefined = undefined
+
+       if (!imageUrl) {
+         const defaultImg = getDefaultImage()
+         finalImage = defaultImg.url
+         finalOriginalImage = defaultImg.blob // Use blob for originalImage to ensure it's saved correctly if needed, or url? type allows both.
+         // Actually, if we want IndexedDB to store the blob, we should set _blob.
+         itemBlob = defaultImg.blob
+         // And for display, use the URL.
+         // But wait, if originalImage is Blob, it might need URL.createObjectURL when used?
+         // TierRow handles Blob in originalImage by creating ObjectURL.
+         // So let's set originalImage to Blob?
+         finalOriginalImage = defaultImg.blob
+       }
+
        const anime: AnimeItem = {
          id: itemId,
          name: result.name, // Priority handled in util
          name_cn: result.name_cn || undefined, 
-         image: imageUrl,
+         image: finalImage,
          date: result.date || undefined,
          score: result.score,
          originalUrl: defaultUrl,
-         originalImage: imageUrl,
+         originalImage: finalOriginalImage,
+         _blob: itemBlob
        }
        animeItems.push(anime)
     }
@@ -177,14 +196,26 @@ async function handleBangumiImport() {
         imageUrl = `https://api.bgm.tv/v0/subjects/${bangumiSite.id}/image?type=large`
       }
       
+      let finalImage: string | Blob = imageUrl
+      let finalOriginalImage: string | Blob = imageUrl
+      let itemBlob: Blob | undefined = undefined
+
+      if (!imageUrl) {
+        const defaultImg = getDefaultImage()
+        finalImage = defaultImg.url
+        finalOriginalImage = defaultImg.blob
+        itemBlob = defaultImg.blob
+      }
+
       const anime: AnimeItem = {
         id: `bgmlist_${item.id}`,
         name: name,
         name_cn: titleCn || undefined,
-        image: imageUrl,
+        image: finalImage,
         date: item.begin ? item.begin.split('T')[0] : undefined,
         originalUrl: bangumiUrl || item.officialSite || '',
-        originalImage: imageUrl,
+        originalImage: finalOriginalImage,
+        _blob: itemBlob,
       }
       animeItems.push(anime)
     }
