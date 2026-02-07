@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:5173
+访问 <http://localhost:5173>
 
 ## 项目结构
 
@@ -50,21 +50,21 @@ tier-list-simple/
 
 [BangumiExtLinker](https://github.com/Rhilip/BangumiExtLinker)
 
-https://next.bgm.tv/demo/access-token 获取 Access Token
+<https://next.bgm.tv/demo/access-token> 获取 Access Token
 
-https://github.com/wxt2005/bangumi-list-v3 
+<https://github.com/wxt2005/bangumi-list-v3>
 
-https://bgmlist.com/api/v1/bangumi/archive/2021q1 获取季度新番
+<https://bgmlist.com/api/v1/bangumi/archive/2021q1> 获取季度新番
 
 ### 季度新番
 
-https://bgmlist.com/
+<https://bgmlist.com/>
 
-https://yuc.wiki/
+<https://yuc.wiki/>
 
-https://acgsecrets.hk/
+<https://acgsecrets.hk/>
 
-https://m-p.sakura.ne.jp/
+<https://m-p.sakura.ne.jp/>
 
 ## to do list
 
@@ -78,6 +78,7 @@ https://m-p.sakura.ne.jp/
 
 点击拖动导致重新创建元素
 
+导入作品缺少图片url，长按进入后会一直提示添加url，无法退出
 
 ## 文档需包含
 
