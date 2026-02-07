@@ -458,7 +458,7 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             style="max-width: 100px;"
             @change="handleImageUtilChange('ratio')"
           />
-          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">(支持小数或 16:9, 16：9 格式)</span>
+          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">(3:4; 1, 16/9, ...)</span>
         </div>
         
         <div class="config-item-row" style="margin-top: 10px;">
