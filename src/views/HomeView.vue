@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
+import { getDefaultTiersForLocale } from '../i18n'
 import TierList from '../components/TierList.vue'
 import SearchModal from '../components/SearchModal.vue'
 import ConfigModal from '../components/ConfigModal.vue'
@@ -48,6 +49,54 @@ const currentLang = computed(() => route.params.lang as string || 'zh')
 
 function switchLanguage() {
   const newLang = currentLang.value === 'zh' ? 'en' : 'zh'
+  const oldLang = currentLang.value
+  
+  // Get default tier configs for both languages
+  const oldDefaults = getDefaultTiersForLocale(oldLang)
+  const newDefaults = getDefaultTiersForLocale(newLang)
+  const oldTierConfigs = tierConfigs.value
+  
+  // Check if current tiers match the old language defaults (not customized)
+  const isUsingDefaults = oldTierConfigs.length === oldDefaults.length && 
+    oldTierConfigs.every((config, index) => {
+      const defaultConfig = oldDefaults[index]
+      return config.id === defaultConfig.id && config.label === defaultConfig.label
+    })
+  
+  if (isUsingDefaults) {
+    // User hasn't customized - switch to new language defaults
+    const newTiers: typeof tiers.value = []
+    newDefaults.forEach((newConfig, index) => {
+      const oldConfig = oldTierConfigs[index]
+      const oldTier = oldConfig ? tiers.value.find(t => t.id === oldConfig.id) : null
+      
+      if (oldTier) {
+        // Migrate items to new tier id
+        newTiers.push({
+          id: newConfig.id,
+          rows: oldTier.rows.map((row, rowIndex) => ({
+            id: `${newConfig.id}-row-${rowIndex}`,
+            items: row.items
+          }))
+        })
+      } else {
+        // Create empty tier
+        newTiers.push({
+          id: newConfig.id,
+          rows: [{ id: `${newConfig.id}-row-0`, items: [] }]
+        })
+      }
+    })
+    
+    // Update tier configs and tiers
+    tierConfigs.value = newDefaults
+    tiers.value = newTiers
+    saveTierConfigs(tierConfigs.value)
+    saveTierData([...tiers.value, ...unrankedTiers.value])
+  }
+  // If user has customized tiers, keep them as-is
+  
+  // Navigate to new language
   router.push(`/${newLang}/`)
 }
 
@@ -493,7 +542,9 @@ function handleResetSettings() {
   try {
     resetSettings()
     
-    tierConfigs.value = JSON.parse(JSON.stringify(DEFAULT_TIER_CONFIGS))
+    // Use language-specific default tiers
+    const langSpecificTiers = getDefaultTiersForLocale(currentLang.value)
+    tierConfigs.value = JSON.parse(JSON.stringify(langSpecificTiers))
     saveTierConfigs(tierConfigs.value)
     
     titleFontSize.value = 32

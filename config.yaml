@@ -16,7 +16,7 @@ sizes:
   
   # ==================== 等级标签 ====================
   label-font-size: 32
-  label-min-width: 80
+  label-min-width: 100
   label-min-height: 0  # 120
   label-padding-x: 10
   

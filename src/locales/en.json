@@ -166,5 +166,42 @@
         "resetFailed": "Failed to reset settings. Please refresh and try again.",
         "importFailed": "An error occurred during import",
         "exportFailed": "An error occurred during export"
-    }
+    },
+    "defaultTiers": [
+        {
+            "id": "S",
+            "label": "S",
+            "color": "#ff7f7f",
+            "order": 0,
+            "fontSize": 32
+        },
+        {
+            "id": "A",
+            "label": "A",
+            "color": "#ffaf7f",
+            "order": 1,
+            "fontSize": 32
+        },
+        {
+            "id": "B",
+            "label": "B",
+            "color": "#ffcf7f",
+            "order": 2,
+            "fontSize": 32
+        },
+        {
+            "id": "C",
+            "label": "C",
+            "color": "#ffdf7f",
+            "order": 3,
+            "fontSize": 32
+        },
+        {
+            "id": "D",
+            "label": "D",
+            "color": "#cfcfcf",
+            "order": 4,
+            "fontSize": 32
+        }
+    ]
 }

@@ -166,5 +166,42 @@
         "resetFailed": "重置设置失败，请刷新页面重试",
         "importFailed": "导入过程中发生错误",
         "exportFailed": "导出过程中发生错误"
-    }
+    },
+    "defaultTiers": [
+        {
+            "id": "夯",
+            "label": "夯",
+            "color": "#ff7f7f",
+            "order": 0,
+            "fontSize": 32
+        },
+        {
+            "id": "顶级",
+            "label": "顶级",
+            "color": "#ffaf7f",
+            "order": 1,
+            "fontSize": 32
+        },
+        {
+            "id": "人上人",
+            "label": "人上人",
+            "color": "#ffcf7f",
+            "order": 2,
+            "fontSize": 32
+        },
+        {
+            "id": "NPC",
+            "label": "NPC",
+            "color": "#ffdf7f",
+            "order": 3,
+            "fontSize": 32
+        },
+        {
+            "id": "拉完了",
+            "label": "拉完了",
+            "color": "#cfcfcf",
+            "order": 4,
+            "fontSize": 32
+        }
+    ]
 }
