@@ -31,6 +31,21 @@
       }
     })();
   </script>
+  <script>
+    // GitHub Pages SPA 路由恢复
+    // 从 sessionStorage 读取 404.html 保存的路径
+    (function () {
+      var redirectPath = sessionStorage.getItem('spa-redirect-path');
+      if (redirectPath) {
+        sessionStorage.removeItem('spa-redirect-path');
+        // 使用 history.replaceState 恢复正确的 URL
+        // 这样 Vue Router 就能正确处理路由
+        if (redirectPath !== '/' && redirectPath !== window.location.pathname) {
+          history.replaceState(null, '', redirectPath);
+        }
+      }
+    })();
+  </script>
   <style>
     /* 关键主题 CSS - 内联以避免闪烁 */
     :root {
