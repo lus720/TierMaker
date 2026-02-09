@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TierConfig } from '../types'
 import { getSetting, getSize, updateSizes, saveLocalConfig, clearLocalConfig } from '../utils/configManager'
 import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadThemePreference, saveThemePreference, loadHideItemNames, saveHideItemNames, loadExportScale, saveExportScale, DEFAULT_TIER_CONFIGS } from '../utils/storage'
@@ -17,6 +18,8 @@ const emit = defineEmits<{
   'update-export-scale': [scale: number]
   'reset-settings': []
 }>()
+
+const { t } = useI18n()
 
 const localConfigs = ref<TierConfig[]>([])
 const bgmToken = ref('')
@@ -357,15 +360,15 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
   <div class="modal-overlay" @mousedown="handleMouseDown" @mouseup="handleMouseUp">
     <div class="modal-content" ref="modalContentRef">
       <div class="modal-header">
-        <h2 class="modal-title">设置</h2>
+        <h2 class="modal-title">{{ t('settings.title') }}</h2>
         <button class="close-btn" @click="handleClose">×</button>
       </div>
       
       <div class="modal-body">
       <div class="config-section">
-        <h3 class="section-title">显示设置</h3>
+        <h3 class="section-title">{{ t('settings.displaySettings') }}</h3>
         <div class="config-item-row">
-          <label for="title-font-size">标题字体大小:</label>
+          <label for="title-font-size">{{ t('settings.titleFontSize') }}:</label>
           <input
             id="title-font-size"
             v-model.number="titleFontSize"
@@ -378,20 +381,20 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
           />
         </div>
         <div class="config-item-row" style="margin-top: 15px;">
-          <label for="theme-preference">主题模式:</label>
+          <label for="theme-preference">{{ t('settings.themeMode') }}:</label>
           <select
             id="theme-preference"
             v-model="themePreference"
             @change="handleThemeChange"
             class="config-select"
           >
-            <option value="auto">跟随系统</option>
-            <option value="light">浅色模式</option>
-            <option value="dark">暗色模式</option>
+            <option value="auto">{{ t('settings.themeAuto') }}</option>
+            <option value="light">{{ t('settings.themeLight') }}</option>
+            <option value="dark">{{ t('settings.themeDark') }}</option>
           </select>
         </div>
         <div class="config-item-row" style="margin-top: 15px;">
-          <label for="export-scale">导出分辨率倍率:</label>
+          <label for="export-scale">{{ t('settings.exportScale') }}:</label>
           <input
             id="export-scale"
             v-model.number="exportScale"
@@ -404,7 +407,7 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             @input="handleExportScaleInput"
             @blur="handleExportScaleBlur"
           />
-          <span style="margin-left: 10px; color: var(--text-secondary);">倍 (推荐: 4倍，范围: 1-6)</span>
+          <span style="margin-left: 10px; color: var(--text-secondary);">{{ t('settings.exportScaleHint') }}</span>
         </div>
         <div class="config-item-row" style="margin-top: 15px;">
           <label for="hide-item-names" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
@@ -415,7 +418,7 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
               class="config-checkbox"
               @change="handleHideItemNamesChange"
             />
-            <span>隐藏作品名</span>
+            <span>{{ t('settings.hideItemNames') }}</span>
           </label>
         </div>
         
@@ -428,28 +431,28 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
               class="config-checkbox"
               @change="handleCompactModeChange"
             />
-            <span>紧凑模式 (无间距)</span>
+            <span>{{ t('settings.compactMode') }}</span>
           </label>
         </div>
         
         <div class="config-item-row" style="margin-top: 15px;">
-          <label for="tall-image-crop-mode">长图裁剪模式:</label>
+          <label for="tall-image-crop-mode">{{ t('settings.tallImageCropMode') }}:</label>
           <select
             id="tall-image-crop-mode"
             v-model="tallImageCropMode"
             @change="handleTallImageCropModeChange"
             class="config-select"
           >
-            <option value="center-top">顶部对齐 (显示头部)</option>
-            <option value="center-center">居中对齐</option>
+            <option value="center-top">{{ t('settings.cropTopAlign') }}</option>
+            <option value="center-center">{{ t('settings.cropCenterAlign') }}</option>
           </select>
         </div>
       </div>
       
       <div class="config-section">
-        <h3 class="section-title">卡片尺寸设置</h3>
+        <h3 class="section-title">{{ t('settings.cardSizeSettings') }}</h3>
         <div class="config-item-row">
-          <label for="image-aspect-ratio">宽高比 (Width/Height):</label>
+          <label for="image-aspect-ratio">{{ t('settings.aspectRatio') }}:</label>
           <input
             id="image-aspect-ratio"
             v-model="imageAspectRatioInput"
@@ -458,11 +461,11 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             style="max-width: 100px;"
             @change="handleImageUtilChange('ratio')"
           />
-          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">(3:4; 1, 16/9, ...)</span>
+          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">{{ t('settings.aspectRatioHint') }}</span>
         </div>
         
         <div class="config-item-row" style="margin-top: 10px;">
-          <label for="image-width">图片宽度 (px):</label>
+          <label for="image-width">{{ t('settings.imageWidth') }}:</label>
           <input
             id="image-width"
             v-model.number="imageWidth"
@@ -476,7 +479,7 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
         </div>
         
         <div class="config-item-row" style="margin-top: 10px;">
-          <label for="image-height">图片高度 (px):</label>
+          <label for="image-height">{{ t('settings.imageHeight') }}:</label>
           <input
             id="image-height"
             v-model.number="imageHeight"
@@ -487,38 +490,38 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             style="max-width: 100px;"
             @input="handleImageUtilChange('height')"
           />
-          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">(根据宽高比自动匹配)</span>
+          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">{{ t('settings.imageHeightHint') }}</span>
         </div>
       </div>
       
       <div class="config-section">
-        <h3 class="section-title">Bangumi Access Token（可选）</h3>
+        <h3 class="section-title">{{ t('settings.bangumiToken') }}</h3>
         <div class="token-config">
           <div class="token-input-group">
             <input
               v-model="bgmToken"
               type="text"
               class="token-input"
-              placeholder="留空则使用默认 Token"
+              :placeholder="t('settings.tokenPlaceholder')"
             />
             <button
               class="token-clear-btn"
               @click="bgmToken = ''"
               :disabled="!bgmToken"
             >
-              清除
+              {{ t('common.clear') }}
             </button>
           </div>
           <p class="token-hint">
-            💡 提示：留空将使用默认 Token。设置自定义 Token 后，将优先使用您的 Token。
+            {{ t('settings.tokenHint') }}
             <br />
-            获取 Token：<a href="https://next.bgm.tv/demo/access-token" target="_blank">https://next.bgm.tv/demo/access-token</a>
+            {{ t('settings.getToken') }}：<a href="https://next.bgm.tv/demo/access-token" target="_blank">https://next.bgm.tv/demo/access-token</a>
           </p>
         </div>
       </div>
       
       <div class="config-section config-section-tiers">
-        <h3 class="section-title">评分等级配置</h3>
+        <h3 class="section-title">{{ t('settings.tierConfig') }}</h3>
         
         <div class="config-list">
           <div
@@ -547,7 +550,7 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             :value="inputValues[index] ?? config.id"
             type="text"
             class="config-input"
-            placeholder="等级（如 S、SS、A、EX）"
+            :placeholder="t('settings.tierPlaceholder')"
             @input="(e) => handleTierIdInput(index, (e.target as HTMLInputElement).value)"
             @blur="handleTierIdBlur(config, index)"
           />
@@ -584,7 +587,7 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             @click="removeTier(index)"
             :disabled="localConfigs.length <= 1"
           >
-            删除
+            {{ t('common.delete') }}
           </button>
           </div>
         </div>
@@ -594,12 +597,12 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
       
       <div class="modal-footer">
         <div class="footer-left">
-          <button class="btn btn-reset" @click="handleResetSettings">重置设置</button>
-          <button class="add-btn" @click="addTier">添加等级</button>
+          <button class="btn btn-reset" @click="handleResetSettings">{{ t('settings.resetSettings') }}</button>
+          <button class="add-btn" @click="addTier">{{ t('settings.addTier') }}</button>
         </div>
         <div class="footer-actions">
-          <button class="btn btn-cancel" @click="handleClose">取消</button>
-          <button class="btn btn-save" @click="handleSave">保存</button>
+          <button class="btn btn-cancel" @click="handleClose">{{ t('common.cancel') }}</button>
+          <button class="btn btn-save" @click="handleSave">{{ t('common.save') }}</button>
         </div>
       </div>
     </div>

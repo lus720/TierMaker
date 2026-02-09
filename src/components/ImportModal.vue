@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { fetchVndbUserList } from '../utils/vndb'
 import { fetchSeasonAnime, formatSeasonName } from '../utils/bangumiList'
 import { getDefaultImage } from '../utils/constants'
@@ -13,6 +14,8 @@ const emit = defineEmits<{
 }>()
 
 const activeTab = ref<'file' | 'vndb' | 'bangumi'>('file')
+
+const { t } = useI18n()
 
 // --- File Import Logic ---
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -263,7 +266,7 @@ function handleClose() {
   <div class="modal-overlay" @mousedown="handleOverlayMouseDown" @mouseup="handleOverlayMouseUp">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 class="modal-title">导入数据</h2>
+        <h2 class="modal-title">{{ t('import.title') }}</h2>
         <button class="close-btn" @click="handleClose">×</button>
       </div>
 
@@ -273,21 +276,21 @@ function handleClose() {
           :class="{ active: activeTab === 'file' }"
           @click="activeTab = 'file'; error = ''"
         >
-          从文件 (JSON)
+          {{ t('import.fileTab') }}
         </button>
         <button 
           class="tab-btn" 
           :class="{ active: activeTab === 'vndb' }"
           @click="activeTab = 'vndb'; error = ''"
         >
-          从 VNDB 导入
+          {{ t('import.vndbTab') }}
         </button>
         <button 
           class="tab-btn" 
           :class="{ active: activeTab === 'bangumi' }"
           @click="activeTab = 'bangumi'; error = ''"
         >
-          季度动漫
+          {{ t('import.bangumiTab') }}
         </button>
       </div>
 
@@ -295,12 +298,12 @@ function handleClose() {
         <!-- File Import -->
         <div v-if="activeTab === 'file'" class="import-section">
             <p class="description">
-                上传之前的备份文件 (JSON) 以恢复数据。
+                {{ t('import.fileDesc') }}
                 <br>
-                <span class="warning">注意：这将覆盖当前的所​​有数据！</span>
+                <span class="warning">{{ t('import.fileWarning') }}</span>
             </p>
             <button class="action-btn primary" @click="handleFileClick">
-                📄 选择文件
+                📄 {{ t('import.selectFile') }}
             </button>
             <input 
                 ref="fileInputRef"
@@ -314,13 +317,13 @@ function handleClose() {
         <!-- VNDB Import -->
         <div v-if="activeTab === 'vndb'" class="import-section">
             <p class="description">
-                输入您的 VNDB 用户 ID 以导入您的视觉小说列表。
+                {{ t('import.vndbDesc') }}
             </p>
             <div class="input-group">
                 <input 
                     v-model="vndbUserId"
                     type="text" 
-                    placeholder="输入 VNDB 用户 ID (例如: u123456)" 
+                    :placeholder="t('import.vndbPlaceholder')" 
                     class="id-input"
                     @keydown.enter="handleVndbImport"
                     :disabled="isImportingVndb"
@@ -330,17 +333,17 @@ function handleClose() {
                     @click="handleVndbImport"
                     :disabled="isImportingVndb || !vndbUserId.trim()"
                 >
-                    {{ isImportingVndb ? '导入中...' : '开始导入' }}
+                    {{ isImportingVndb ? t('import.importing') : t('import.startImport') }}
                 </button>
             </div>
             
             <div class="vndb-guide">
                 <details>
-                    <summary>如何获取 ID?</summary>
+                    <summary>{{ t('import.vndbGuide') }}</summary>
                     <ol>
-                        <li>登录 <a href="https://vndb.org" target="_blank">vndb.org</a></li>
-                        <li>进入个人主页，查看 URL 中的 ID (如 /u1234)</li>
-                        <li>确保列表设置为公开 (Public)</li>
+                        <li>{{ t('import.vndbStep1') }}</li>
+                        <li>{{ t('import.vndbStep2') }}</li>
+                        <li>{{ t('import.vndbStep3') }}</li>
                     </ol>
                 </details>
             </div>
@@ -351,14 +354,14 @@ function handleClose() {
         <!-- Bangumi List Import -->
         <div v-if="activeTab === 'bangumi'" class="import-section">
             <p class="description">
-                输入季度代码以导入该季度的动漫列表。
+                {{ t('import.bangumiDesc') }}
             </p>
             
             <div class="input-group">
                 <input 
                     v-model="seasonInput"
                     type="text" 
-                    placeholder="输入季度 (例如: 2024q4)" 
+                    :placeholder="t('import.bangumiPlaceholder')" 
                     class="id-input"
                     @keydown.enter="handleBangumiImport"
                     :disabled="isImportingBangumi"
@@ -368,21 +371,20 @@ function handleClose() {
                     @click="handleBangumiImport"
                     :disabled="isImportingBangumi || !seasonInput.trim()"
                 >
-                    {{ isImportingBangumi ? '导入中...' : '开始导入' }}
+                    {{ isImportingBangumi ? t('import.importing') : t('import.startImport') }}
                 </button>
             </div>
             
             <div class="bangumi-guide">
                 <details>
-                    <summary>季度格式说明</summary>
-                    <p>格式为 <code>年份q季度</code>，例如：</p>
+                    <summary>{{ t('import.seasonGuide') }}</summary>
+                    <p>{{ t('import.seasonFormat') }}</p>
                     <ul>
-                        <li><code>2024q4</code> = 2024年10月</li>
-                        <li><code>2024q3</code> = 2024年7月</li>
-                        <li><code>2024q2</code> = 2024年4月</li>
-                        <li><code>2024q1</code> = 2024年1月</li>
+                        <li>{{ t('import.season4') }}</li>
+                        <li>{{ t('import.season3') }}</li>
+                        <li>{{ t('import.season2') }}</li>
+                        <li>{{ t('import.season1') }}</li>
                     </ul>
-                    <p>数据来源于 <a href="https://github.com/bangumi-data/bangumi-data" target="_blank">bangumi-data</a> 项目。</p>
                 </details>
             </div>
             

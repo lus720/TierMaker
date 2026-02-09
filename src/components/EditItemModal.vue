@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, toRaw, watch, onMounted, nextTick, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { AnimeItem, CropPosition } from '../types'
 import { generateDefaultUrl } from '../utils/url'
 import { getSize, getSetting } from '../utils/configManager'
@@ -21,6 +22,9 @@ const customUrl = ref('')
 const imageFile = ref<File | null>(null)
 const imagePreview = ref<string>('')
 const cropPosition = ref<CropPosition>('auto')
+
+const { t } = useI18n()
+
 const modalContentRef = ref<HTMLElement | null>(null)
 const mouseDownInside = ref(false)
 const hasHandledLongPressMouseUp = ref(false)
@@ -780,25 +784,25 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
   <div v-if="item" class="modal-overlay" @mousedown="handleMouseDown" @mouseup="handleMouseUp">
     <div class="modal-content" ref="modalContentRef">
       <div class="modal-header">
-        <h2>编辑作品</h2>
+        <h2>{{ t('editItem.title') }}</h2>
         <button class="close-btn" @click="handleCancel">×</button>
       </div>
       
       <div class="modal-body">
         <!-- 作品名称 -->
         <div class="form-group">
-          <label>作品名称</label>
+          <label>{{ t('editItem.name') }}</label>
           <input
             v-model="name"
             type="text"
-            placeholder="输入作品名称"
+            :placeholder="t('editItem.namePlaceholder')"
             class="form-input"
           />
         </div>
         
         <!-- 图片预览 -->
         <div class="form-group">
-          <label>图片预览</label>
+          <label>{{ t('editItem.imagePreview') }}</label>
           <div class="image-preview-container" v-if="imagePreview">
             <!-- 原图（尽量大，不拉伸） -->
             <img
@@ -823,13 +827,13 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
             <div class="image-corner-marker" :style="cornerBottomLeftStyle"></div>
             <div class="image-corner-marker" :style="cornerBottomRightStyle"></div>
           </div>
-          <div v-else class="image-placeholder">暂无图片</div>
+          <div v-else class="image-placeholder">{{ t('editItem.noImage') }}</div>
         </div>
         
         <!-- 提示信息 -->
         <div class="form-group">
           <div class="form-hint">
-            拖动白色框框可以调整裁剪位置
+            {{ t('editItem.dragHint') }}
           </div>
         </div>
         
@@ -859,31 +863,31 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
         <!-- 自定义链接 -->
         <div class="form-group">
           <label>
-            自定义链接（可选）
+            {{ t('editItem.customUrl') }}
             <button
               v-if="customUrl"
               class="clear-btn"
               @click="clearCustomUrl"
-              title="清除自定义链接"
+              :title="t('common.clear')"
             >
-              清除
+              {{ t('common.clear') }}
             </button>
           </label>
           <input
             v-model="customUrl"
             type="url"
-            placeholder="输入自定义链接（留空则使用默认链接）"
+            :placeholder="t('editItem.customUrlPlaceholder')"
             class="form-input"
           />
           <div class="form-hint">
-            留空将根据作品 ID 自动生成链接（Bangumi/VNDB）
+            {{ t('editItem.customUrlHint') }}
           </div>
         </div>
       </div>
       
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="handleCancel">取消</button>
-        <button class="btn btn-primary" @click="handleSave">保存</button>
+        <button class="btn btn-secondary" @click="handleCancel">{{ t('common.cancel') }}</button>
+        <button class="btn btn-primary" @click="handleSave">{{ t('common.save') }}</button>
       </div>
     </div>
   </div>
