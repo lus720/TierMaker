@@ -241,6 +241,7 @@ export function getDefaultTiers(locale: string = 'zh'): TierConfig[] {
     const tiers = config.tiers ? JSON.parse(JSON.stringify(config.tiers)) : []
 
     // 如果是英文环境，使用英文默认标签 (S, A, B, C, D)
+    // ID 保持不变 (t0-t4)
     if (locale === 'en' && tiers.length === 5) {
         const enLabels = ['S', 'A', 'B', 'C', 'D']
         tiers.forEach((t: TierConfig, i: number) => {

@@ -65,8 +65,7 @@ watch(() => props.configs, (newConfigs) => {
     if (config.fontSize === undefined || config.fontSize === null) {
       config.fontSize = 32
     }
-    inputValues.value[index] = config.label || config.id
-  })
+    inputValues.value[index] = config.label || '' // Initialize with Label, not ID (unless ID==Label in legacy)
   localConfigs.value = newLocalConfigs
 }, { immediate: true })
 
@@ -93,10 +92,32 @@ onMounted(() => {
 })
 
 function addTier() {
-  const newId = String.fromCharCode(65 + localConfigs.value.length)
+  // Find the max existing ID number to ensure uniqueness
+  let maxIdNum = -1
+  localConfigs.value.forEach(config => {
+    // Check for standard ID format "tN"
+    const match = config.id.match(/^t(\d+)$/)
+    if (match) {
+      const num = parseInt(match[1], 10)
+      if (!isNaN(num) && num > maxIdNum) {
+        maxIdNum = num
+      }
+    }
+  })
+
+  // If no standard IDs found (only legacy "S", "A"), start from t0
+  // Otherwise, use max + 1
+  const newIdNum = maxIdNum + 1
+  const newId = `t${newIdNum}`
+
+  // Default label: use the ID or just empty?
+  // Let's use a Letter based on index if possible, or just "New"
+  // Actually, legacy logic used String.fromCharCode(65 + length). Let's keep that for LABEL only.
+  const newLabel = String.fromCharCode(65 + localConfigs.value.length) // A, B, C...
+
   const newConfig: any = {
     id: newId,
-    label: newId,
+    label: newLabel,
     color: '#000000',
     order: localConfigs.value.length,
     fontSize: 32,
@@ -287,7 +308,7 @@ function handleTierIdInput(index: number, value: string) {
 
 function handleTierIdBlur(config: TierConfig, index: number) {
   const newValue = inputValues.value[index] || config.label
-  config.id = newValue
+  // config.id = newValue // STOP updating ID. ID is immutable.
   config.label = newValue
 }
 

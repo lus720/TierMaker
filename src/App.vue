@@ -487,48 +487,30 @@ function handleCloseEditItem() {
 }
 
 function handleUpdateConfigs(newConfigs: TierConfig[]) {
-  // 保存旧配置的映射（通过 order 映射到 tier）
-  const oldConfigs = tierConfigs.value
-  const oldTierByOrder = new Map<number, Tier>()
-  tiers.value.forEach(tier => {
-    const oldConfig = oldConfigs.find(c => c.id === tier.id)
-    if (oldConfig) {
-      oldTierByOrder.set(oldConfig.order, tier)
-    }
+  // 1. Identify removed tiers and move their items to Unranked
+  const removedTiers = tiers.value.filter(t => !newConfigs.some(c => c.id === t.id))
+  
+  removedTiers.forEach(tier => {
+    tier.rows.forEach(row => {
+      if (row.items.length > 0) {
+        // Add items to unranked
+        unrankedTiers.value[0].rows[0].items.push(...row.items)
+      }
+    })
   })
-  
-  tierConfigs.value = newConfigs
-  saveTierConfigs(newConfigs)
-  
-  // 构建新的 tiers 数组，通过 order 匹配保留作品数据
+
+  // 2. Construct new tiers array based on newConfigs order
   const newTiers: Tier[] = []
-  const processedOldTiers = new Set<Tier>()
   
   newConfigs.forEach(config => {
-    // 通过 order 找到对应的旧 tier（如果有）
-    const oldTier = oldTierByOrder.get(config.order)
+    const existingTier = tiers.value.find(t => t.id === config.id)
     
-    if (oldTier) {
-      // 找到匹配的旧 tier，更新 id 但保留所有作品数据
-      oldTier.id = config.id
-      // 更新 row 的 id（因为 row id 包含 tier id）
-      oldTier.rows.forEach((row, rowIndex) => {
-        if (rowIndex === 0) {
-          row.id = `${config.id}-row-0`
-        } else {
-          // 如果有多行，保持原有格式
-          const match = row.id.match(/-row-(\d+)$/)
-          if (match) {
-            row.id = `${config.id}-row-${match[1]}`
-          } else {
-            row.id = `${config.id}-row-${rowIndex}`
-          }
-        }
-      })
-      newTiers.push(oldTier)
-      processedOldTiers.add(oldTier)
+    if (existingTier) {
+      // Keep existing tier data (ID is immutable, so no need to update it)
+      // Just push it to the new array in the correct order
+      newTiers.push(existingTier)
     } else {
-      // 没有找到匹配的旧 tier（新增的等级），创建新的空 tier
+      // Create new tier
       newTiers.push({
         id: config.id,
         rows: [{
@@ -538,14 +520,16 @@ function handleUpdateConfigs(newConfigs: TierConfig[]) {
       })
     }
   })
-  
-  // 替换整个 tiers 数组
+
+  // 3. Update state
+  tierConfigs.value = newConfigs
+  saveTierConfigs(newConfigs)
   tiers.value = newTiers
-  
-  // 保存更新后的数据
+
+  // Save everything
   saveTierData([...tiers.value, ...unrankedTiers.value])
-  
-  // 等待 DOM 更新后重新计算等级块宽度
+
+  // Update UI
   nextTick(() => {
     setTimeout(() => {
       tierListRef.value?.updateLabelWidth()
@@ -618,10 +602,9 @@ function handleResetSettings() {
     resetSettings()
     console.log('[App] handleResetSettings triggered')
     
-    // 重置评分等级配置
-    // 使用当前语言对应的默认配置
-    tierConfigs.value = getDefaultTiers(locale.value)
-    saveTierConfigs(tierConfigs.value)
+    // 重置评分等级配置 (使用 handleUpdateConfigs 安全地同步，它会处理多余等级的物品归档)
+    const defaultConfigs = getDefaultTiers(locale.value)
+    handleUpdateConfigs(defaultConfigs)
     
     // 重置标题字体大小
     titleFontSize.value = 32
@@ -638,30 +621,6 @@ function handleResetSettings() {
     exportScale.value = 4
     
     // 注意：不重置标题，保留用户设置的标题
-    
-    // 同步 tiers 和 tierConfigs（确保结构一致）
-    const configIds = new Set(tierConfigs.value.map(c => c.id))
-    tiers.value = tiers.value.filter(t => configIds.has(t.id))
-    
-    tierConfigs.value.forEach(config => {
-      if (!tiers.value.find(t => t.id === config.id)) {
-        tiers.value.push({
-          id: config.id,
-          rows: [{
-            id: `${config.id}-row-0`,
-            items: [],
-          }],
-        })
-      }
-    })
-    
-    tiers.value.sort((a, b) => {
-      const aOrder = tierConfigs.value.find(c => c.id === a.id)?.order ?? 999
-      const bOrder = tierConfigs.value.find(c => c.id === b.id)?.order ?? 999
-      return aOrder - bOrder
-    })
-    
-    saveTierData([...tiers.value, ...unrankedTiers.value])
     
     // 重置成功，刷新设置页面内容让用户注意到重置已完成
     if (showConfig.value) {

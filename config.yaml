@@ -76,27 +76,27 @@ settings:
 
 tiers:
   # ==================== 默认评分等级 ====================
-  - id: '夯'
+  - id: 't0'
     label: '夯'
     color: '#ff7f7f'     # 红色/粉红色
     order: 0
     fontSize: 32
-  - id: '顶级'
+  - id: 't1'
     label: '顶级'
     color: '#ffaf7f'     # 浅橙色/桃色
     order: 1
     fontSize: 32
-  - id: '人上人'
+  - id: 't2'
     label: '人上人'
     color: '#ffcf7f'     # 橙黄色/杏色
     order: 2
     fontSize: 32
-  - id: 'NPC'
+  - id: 't3'
     label: 'NPC'
     color: '#ffdf7f'     # 浅橙色
     order: 3
     fontSize: 32
-  - id: '拉完了'
+  - id: 't4'
     label: '拉完了'
     color: '#cfcfcf'     # 浅灰色
     order: 4
