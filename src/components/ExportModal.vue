@@ -8,6 +8,9 @@ import { getSize } from '../utils/configManager'
 import { adaptCropToRatio, normalizeCropResolution } from '../utils/cropUtils'
 import { exportAllData } from '../utils/storage'
 import type { Tier, TierConfig, AnimeItem, CropPosition } from '../types'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   tiers: Tier[]
@@ -264,7 +267,7 @@ async function handleExportImage() {
   if (isExportingImage.value) return
   
   isExportingImage.value = true
-  exportProgress.value = '正在准备...'
+  exportProgress.value = t('export.preparing')
   
   try {
     const originalScrollX = window.scrollX
@@ -285,12 +288,12 @@ async function handleExportImage() {
     
     const currentScale = props.exportScale
     
-    exportProgress.value = '同步主题...'
+    exportProgress.value = t('export.syncTheme')
     syncThemeToClonedDoc(hiddenContainer)
     hideExportUIElements(hiddenContainer, { hideCandidates: true, hideUnranked: true })
     processEmptySlots(hiddenContainer)
     
-    exportProgress.value = '处理图片...'
+    exportProgress.value = t('export.processingImages')
     await processExportImages(hiddenContainer, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'image')
     
     const originalAppWidth = originalNode.offsetWidth || originalNode.scrollWidth
@@ -309,7 +312,7 @@ async function handleExportImage() {
     }
     configureExportStyles(hiddenContainer, { titleFontSize: computedTitleFontSize, originalAppWidth })
 
-    exportProgress.value = '生成图片...'
+    exportProgress.value = t('export.generatingImage')
     const canvas = await html2canvas(clonedNode, {
       scale: currentScale,
       useCORS: true,
@@ -322,7 +325,7 @@ async function handleExportImage() {
     document.body.removeChild(hiddenContainer)
     window.scrollTo(originalScrollX, originalScrollY)
     
-    exportProgress.value = '下载中...'
+    exportProgress.value = t('export.downloading')
     canvas.toBlob((blob) => {
       if (!blob) {
         alert('生成图片失败')
@@ -345,9 +348,10 @@ async function handleExportImage() {
     
   } catch (error) {
     console.error('导出图片失败:', error)
-    alert('导出失败，请检查网络连接')
+    alert(t('export.exportFailed'))
     const containers = document.querySelectorAll('div[style*="left: -9999px"]')
     containers.forEach(c => c.remove())
+  } finally {
     isExportingImage.value = false
     exportProgress.value = ''
   }
@@ -355,17 +359,17 @@ async function handleExportImage() {
 
 // 导出为PDF
 async function handleExportPDF() {
-  if (!props.appContentRef) {
-    alert('无法找到要导出的内容')
-    return
-  }
-  
   if (isExportingPDF.value || isExportingImage.value) return
   
-  isExportingPDF.value = true
-  exportProgress.value = '正在准备...'
-  
   try {
+    isExportingPDF.value = true
+    exportProgress.value = t('export.preparing')
+    
+    if (!props.appContentRef) {
+      alert(t('export.cannotFindContent'))
+      return
+    }
+    
     await new Promise(resolve => setTimeout(resolve, 100))
     
     const originalScrollX = window.scrollX
@@ -430,18 +434,18 @@ async function handleExportPDF() {
     
     const currentScale = props.exportScale
     
-    exportProgress.value = '同步主题...'
+    exportProgress.value = t('export.syncTheme')
     syncThemeToClonedDoc(hiddenContainer)
     hideExportUIElements(hiddenContainer, { hideCandidates: true, hideUnranked: true })
     processEmptySlots(hiddenContainer)
     
-    exportProgress.value = '处理图片...'
+    exportProgress.value = t('export.processingImages')
     await processExportImages(hiddenContainer, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'pdf')
     
     const originalAppWidth = originalNode.offsetWidth || originalNode.scrollWidth
     configureExportStyles(hiddenContainer, { titleFontSize: props.titleFontSize, originalAppWidth })
 
-    exportProgress.value = '生成PDF...'
+    exportProgress.value = t('export.generatingPDF')
     const canvas = await html2canvas(clonedNode, {
       scale: currentScale,
       useCORS: true, 
@@ -485,17 +489,16 @@ async function handleExportPDF() {
       )
     })
     
-    exportProgress.value = '下载中...'
+    exportProgress.value = t('export.downloading')
     pdf.save(`tier-list-${new Date().toISOString().split('T')[0]}.pdf`)
     
-    isExportingPDF.value = false
-    exportProgress.value = ''
     emit('close')
   } catch (error) {
     console.error('导出PDF失败:', error)
-    alert('导出PDF失败：' + (error instanceof Error ? error.message : '未知错误'))
+    alert(t('export.exportPDFFailed') + (error instanceof Error ? error.message : t('app.unknownError')))
     const containers = document.querySelectorAll('div[style*="left: -9999px"]')
     containers.forEach(c => c.remove())
+  } finally {
     isExportingPDF.value = false
     exportProgress.value = ''
   }
@@ -504,7 +507,7 @@ async function handleExportPDF() {
 // 导出为JSON
 async function handleExportJSON() {
   try {
-    exportProgress.value = '正在导出...'
+    exportProgress.value = t('export.exporting')
     const data = await exportAllData()
     const jsonStr = JSON.stringify(data, null, 2)
     const blob = new Blob([jsonStr], { type: 'application/json' })
@@ -516,11 +519,11 @@ async function handleExportJSON() {
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
-    exportProgress.value = ''
     emit('close')
   } catch (error) {
     console.error('导出失败:', error)
-    alert('导出失败，请重试')
+    alert(t('export.exportFailed'))
+  } finally {
     exportProgress.value = ''
   }
 }
@@ -561,12 +564,12 @@ const isExporting = computed(() => isExportingImage.value || isExportingPDF.valu
   <div class="modal-overlay" @mousedown="handleOverlayMouseDown" @mouseup="handleOverlayMouseUp">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 class="modal-title">导出</h2>
+        <h2 class="modal-title">{{ t('export.title') }}</h2>
         <button class="close-btn" @click="handleClose" :disabled="isExporting">×</button>
       </div>
-
+      
       <div class="modal-body">
-        <p class="description">选择导出格式：</p>
+        <p class="description">{{ t('export.selectFormat') }}</p>
         
         <div class="export-options">
           <button 
@@ -574,8 +577,8 @@ const isExporting = computed(() => isExportingImage.value || isExportingPDF.valu
             @click="handleExportImage"
             :disabled="isExporting"
           >
-            <span class="option-label">图片 (JPG)</span>
-            <span class="option-desc">高清图片，方便分享</span>
+            <span class="option-label">{{ t('export.imageLabel') }}</span>
+            <span class="option-desc">{{ t('export.imageDesc') }}</span>
           </button>
           
           <button 
@@ -583,8 +586,8 @@ const isExporting = computed(() => isExportingImage.value || isExportingPDF.valu
             @click="handleExportPDF"
             :disabled="isExporting"
           >
-            <span class="option-label">PDF</span>
-            <span class="option-desc">带超链接，可点击跳转</span>
+            <span class="option-label">{{ t('export.pdfLabel') }}</span>
+            <span class="option-desc">{{ t('export.pdfDesc') }}</span>
           </button>
           
           <button 
@@ -592,8 +595,8 @@ const isExporting = computed(() => isExportingImage.value || isExportingPDF.valu
             @click="handleExportJSON"
             :disabled="isExporting"
           >
-            <span class="option-label">JSON</span>
-            <span class="option-desc">数据备份，可导入恢复</span>
+            <span class="option-label">{{ t('export.jsonLabel') }}</span>
+            <span class="option-desc">{{ t('export.jsonDesc') }}</span>
           </button>
         </div>
         

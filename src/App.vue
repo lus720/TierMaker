@@ -1,3 +1,4 @@
+```
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 import TierList from './components/TierList.vue'
@@ -6,10 +7,13 @@ import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
 import ImportModal from './components/ImportModal.vue'
 import ExportModal from './components/ExportModal.vue'
+import { useI18n } from 'vue-i18n'
+
+const { t, locale } = useI18n()
 
 import { initConfigStyles, getSetting } from './utils/configManager'
 import type { Tier, AnimeItem, TierConfig } from './types'
-import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, importAllData, clearItemsAndTitle, resetSettings, loadThemePreference, loadHideItemNames, loadExportScale, DEFAULT_TIER_CONFIGS, generateUuid, type ExportData } from './utils/storage'
+import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadThemePreference, saveThemePreference, saveTitle, loadTitle, saveTitleFontSize, loadTitleFontSize, clearItemsAndTitle, importAllData, type ExportData, DEFAULT_TIER_CONFIGS, getDefaultTiers, generateUuid, handleLanguageChange, resetSettings, loadHideItemNames, loadExportScale } from './utils/storage'
 
 const tiers = ref<Tier[]>([])
 const unrankedTiers = ref<Tier[]>([{
@@ -483,6 +487,7 @@ function handleCloseEditItem() {
 }
 
 function handleUpdateConfigs(newConfigs: TierConfig[]) {
+  console.log('[App] handleUpdateConfigs received:', JSON.parse(JSON.stringify(newConfigs)))
   // 保存旧配置的映射（通过 order 映射到 tier）
   const oldConfigs = tierConfigs.value
   const oldTierByOrder = new Map<number, Tier>()
@@ -612,9 +617,11 @@ function handleResetSettings() {
   try {
     // 重置所有设置，但保留作品数据和标题
     resetSettings()
+    console.log('[App] handleResetSettings triggered')
     
     // 重置评分等级配置
-    tierConfigs.value = JSON.parse(JSON.stringify(DEFAULT_TIER_CONFIGS))
+    // 使用当前语言对应的默认配置
+    tierConfigs.value = getDefaultTiers(locale.value)
     saveTierConfigs(tierConfigs.value)
     
     // 重置标题字体大小
@@ -741,6 +748,15 @@ function handleCancelClear() {
   showClearConfirm.value = false
 }
 
+function toggleLanguage() {
+  const current = locale.value
+  const next = current === 'zh' ? 'en' : 'zh'
+  handleLanguageChange(next)
+  // Reload configs to reflect potential language changes in default tiers
+  tierConfigs.value = loadTierConfigs()
+  // Force title update if it's default? No, keeps user title.
+}
+
 // 导入数据
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
@@ -806,13 +822,14 @@ async function handleDataImport(data: ExportData) {
           }
         })
         
+        
         showImportModal.value = false // Close modal on success
      } else {
-        alert(`导入失败: ${result.error || '未知错误'}`)
+        alert(`${t('app.importFailed')}: ${result.error || t('app.unknownError')}`)
      }
   } catch (error) {
      console.error('导入失败:', error)
-     alert('导入过程中发生错误')
+     alert(t('app.importError'))
   }
 }
 
@@ -925,18 +942,21 @@ function handleFileImport(e: Event) {
         @keydown.enter.prevent="titleRef?.blur()"
         @keydown.esc.prevent="titleRef?.blur()"
         ref="titleRef"
-        title="点击编辑标题"
+        :title="t('app.editTitle')"
       ></h1>
       <div class="header-actions">
+        <button class="btn btn-secondary" @click="toggleLanguage" :title="t('settings.language')">
+           {{ locale === 'zh' ? 'English' : '中文' }}
+        </button>
         <button 
           class="btn btn-secondary" 
           @click="showExportModal = true"
-          title="导出"
+          :title="t('app.export')"
         >
-          导出
+          {{ t('app.export') }}
         </button>
-        <button class="btn btn-secondary" @click="handleImportClick" title="导入数据">
-          导入
+        <button class="btn btn-secondary" @click="handleImportClick" :title="t('app.import')">
+          {{ t('app.import') }}
         </button>
         <input
           ref="fileInputRef"
@@ -945,11 +965,11 @@ function handleFileImport(e: Event) {
           style="display: none"
           @change="handleFileImport"
         />
-        <button class="btn btn-danger" @click="handleClearClick" title="清空所有作品和恢复默认标题">
-          清空数据
+        <button class="btn btn-danger" @click="handleClearClick" :title="t('app.clearData')">
+          {{ t('app.clearData') }}
         </button>
         <button class="btn btn-secondary" @click="showConfig = true">
-          设置
+          {{ t('app.settings') }}
         </button>
       </div>
     </header>

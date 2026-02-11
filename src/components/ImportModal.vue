@@ -5,6 +5,9 @@ import { fetchSeasonAnime, formatSeasonName } from '../utils/bangumiList'
 import { getDefaultImage } from '../utils/constants'
 import type { AnimeItem } from '../types'
 import type { ExportData } from '../utils/storage'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const emit = defineEmits<{
   close: []
@@ -34,7 +37,7 @@ function handleFileChange(event: Event) {
       const data = JSON.parse(jsonStr)
       // Basic validation
       if (!data.tiers || !data.tierConfigs) {
-        error.value = '无效的配置文件格式'
+        error.value = t('import.invalidConfig')
         return
       }
       emit('import-data', data)
@@ -44,7 +47,7 @@ function handleFileChange(event: Event) {
       // But App.vue needs to confirm overwrite.
     } catch (e: any) {
       console.error('File parsing error', e)
-      error.value = '解析文件失败: ' + e.message
+      error.value = t('import.parseError') + ': ' + e.message
     } finally {
         if (fileInputRef.value) fileInputRef.value.value = ''
     }
@@ -60,12 +63,12 @@ const vndbImportStatus = ref('')
 async function handleVndbImport() {
   console.log('[ImportModal] handleVndbImport triggered. UserID:', vndbUserId.value)
   if (!vndbUserId.value.trim()) {
-    error.value = '请输入 VNDB 用户 ID'
+    error.value = t('import.vndbIdRequired')
     return
   }
   
   isImportingVndb.value = true
-  vndbImportStatus.value = '正在连接 VNDB...'
+  vndbImportStatus.value = t('import.connectingVndb')
   error.value = ''
   
   try {
@@ -73,12 +76,12 @@ async function handleVndbImport() {
     console.log('[ImportModal] fetchVndbUserList returned items:', results.length)
     
     if (results.length === 0) {
-      error.value = '该用户列表为空或未公开'
+      error.value = t('import.emptyList')
       isImportingVndb.value = false
       return
     }
     
-    vndbImportStatus.value = `获取到 ${results.length} 个条目，正在处理...`
+    vndbImportStatus.value = t('import.processing', { count: results.length })// `获取到 ${results.length} 个条目，正在处理...`
     
     const animeItems: AnimeItem[] = []
     
@@ -263,45 +266,49 @@ function handleClose() {
   <div class="modal-overlay" @mousedown="handleOverlayMouseDown" @mouseup="handleOverlayMouseUp">
     <div class="modal-content">
       <div class="modal-header">
-        <h2 class="modal-title">导入数据</h2>
-        <button class="close-btn" @click="handleClose">×</button>
+        <h2 class="modal-title">{{ t('import.title') }}</h2>
+        <button class="close-btn" @click="emit('close')">×</button>
       </div>
-
-      <div class="tabs">
-        <button 
-          class="tab-btn" 
-          :class="{ active: activeTab === 'file' }"
-          @click="activeTab = 'file'; error = ''"
-        >
-          从文件 (JSON)
-        </button>
-        <button 
-          class="tab-btn" 
-          :class="{ active: activeTab === 'vndb' }"
-          @click="activeTab = 'vndb'; error = ''"
-        >
-          从 VNDB 导入
-        </button>
-        <button 
-          class="tab-btn" 
-          :class="{ active: activeTab === 'bangumi' }"
-          @click="activeTab = 'bangumi'; error = ''"
-        >
-          季度动漫
-        </button>
-      </div>
-
-      <div class="tab-content">
-        <!-- File Import -->
-        <div v-if="activeTab === 'file'" class="import-section">
-            <p class="description">
-                上传之前的备份文件 (JSON) 以恢复数据。
-                <br>
-                <span class="warning">注意：这将覆盖当前的所​​有数据！</span>
-            </p>
-            <button class="action-btn primary" @click="handleFileClick">
-                📄 选择文件
-            </button>
+      
+      <div class="modal-body">
+        <div class="tabs">
+          <button 
+            class="tab-btn" 
+            :class="{ active: activeTab === 'file' }"
+            @click="activeTab = 'file'"
+          >
+            {{ t('import.fileTab') }}
+          </button>
+          <button 
+            class="tab-btn" 
+            :class="{ active: activeTab === 'vndb' }"
+            @click="activeTab = 'vndb'"
+          >
+            {{ t('import.vndbTab') }}
+          </button>
+           <button 
+            class="tab-btn" 
+            :class="{ active: activeTab === 'bangumi' }"
+            @click="activeTab = 'bangumi'"
+          >
+            {{ t('import.bangumiTab') }}
+          </button>
+        </div>
+        
+        <div class="tab-content">
+          <!-- File Import -->
+          <div v-if="activeTab === 'file'" class="import-section">
+            <p class="section-desc">{{ t('import.fileDesc') }}</p>
+            <p class="warning-text">{{ t('import.fileWarning') }}</p>
+            
+            <div 
+              class="file-drop-area"
+              @click="handleFileClick"
+            >
+              <div class="icon">📄</div>
+              <div class="text">{{ t('import.selectFile') }}</div>
+              <div class="hint">{{ t('import.fileHint') }}</div>
+            </div>    
             <input 
                 ref="fileInputRef"
                 type="file" 
@@ -312,81 +319,79 @@ function handleClose() {
         </div>
 
         <!-- VNDB Import -->
-        <div v-if="activeTab === 'vndb'" class="import-section">
-            <p class="description">
-                输入您的 VNDB 用户 ID 以导入您的视觉小说列表。
-            </p>
+          <div v-if="activeTab === 'vndb'" class="import-section">
+            <p class="section-desc">{{ t('import.vndbDesc') }}</p>
+            
             <div class="input-group">
-                <input 
-                    v-model="vndbUserId"
-                    type="text" 
-                    placeholder="输入 VNDB 用户 ID (例如: u123456)" 
-                    class="id-input"
-                    @keydown.enter="handleVndbImport"
-                    :disabled="isImportingVndb"
-                />
-                <button 
-                    class="action-btn primary" 
-                    @click="handleVndbImport"
-                    :disabled="isImportingVndb || !vndbUserId.trim()"
-                >
-                    {{ isImportingVndb ? '导入中...' : '开始导入' }}
-                </button>
+              <input 
+                v-model="vndbUserId" 
+                type="text" 
+                class="modal-input" 
+                :placeholder="t('import.vndbPlaceholder')"
+                @keydown.enter="handleVndbImport"
+                :disabled="isImportingVndb"
+              />
+              <button 
+                class="action-btn" 
+                @click="handleVndbImport"
+                :disabled="isImportingVndb || !vndbUserId.trim()"
+              >
+                {{ t('import.startImport') }}
+              </button>
             </div>
             
-            <div class="vndb-guide">
-                <details>
-                    <summary>如何获取 ID?</summary>
-                    <ol>
-                        <li>登录 <a href="https://vndb.org" target="_blank">vndb.org</a></li>
-                        <li>进入个人主页，查看 URL 中的 ID (如 /u1234)</li>
-                        <li>确保列表设置为公开 (Public)</li>
-                    </ol>
-                </details>
+            <div v-if="vndbImportStatus" class="status-text">
+              {{ vndbImportStatus }}
             </div>
             
-            <div v-if="vndbImportStatus" class="status-message">{{ vndbImportStatus }}</div>
-        </div>
-
+            <div class="help-text">
+              <h4>{{ t('import.howToGetId') }}</h4>
+              <ol>
+                <li>{{ t('import.vndbStep1') }}</li>
+                <li>{{ t('import.vndbStep2') }}</li>
+                <li>{{ t('import.vndbStep3') }}</li>
+              </ol>
+            </div>
+          </div>
+            
         <!-- Bangumi List Import -->
-        <div v-if="activeTab === 'bangumi'" class="import-section">
-            <p class="description">
-                输入季度代码以导入该季度的动漫列表。
-            </p>
-            
-            <div class="input-group">
+          <div v-if="activeTab === 'bangumi'" class="import-section">
+             <p class="section-desc">{{ t('import.bangumiDesc') }}</p>
+             <p class="source-info">{{ t('import.seasonDataSource') }} <a href="https://github.com/bangumi-data/bangumi-data" target="_blank">bangumi-data</a></p>
+             
+             <div class="input-group">
                 <input 
-                    v-model="seasonInput"
-                    type="text" 
-                    placeholder="输入季度 (例如: 2024q4)" 
-                    class="id-input"
-                    @keydown.enter="handleBangumiImport"
-                    :disabled="isImportingBangumi"
+                   v-model="seasonInput"
+                   type="text"
+                   class="modal-input"
+                   :placeholder="t('import.bangumiPlaceholder')"
+                   @keydown.enter="handleBangumiImport"
+                   :disabled="isImportingBangumi"
                 />
-                <button 
-                    class="action-btn primary" 
-                    @click="handleBangumiImport"
-                    :disabled="isImportingBangumi || !seasonInput.trim()"
+                <button
+                   class="action-btn"
+                   @click="handleBangumiImport"
+                   :disabled="isImportingBangumi || !seasonInput.trim()"
                 >
-                    {{ isImportingBangumi ? '导入中...' : '开始导入' }}
+                   {{ t('import.startImport') }}
                 </button>
-            </div>
-            
-            <div class="bangumi-guide">
-                <details>
-                    <summary>季度格式说明</summary>
-                    <p>格式为 <code>年份q季度</code>，例如：</p>
-                    <ul>
-                        <li><code>2024q4</code> = 2024年10月</li>
-                        <li><code>2024q3</code> = 2024年7月</li>
-                        <li><code>2024q2</code> = 2024年4月</li>
-                        <li><code>2024q1</code> = 2024年1月</li>
-                    </ul>
-                    <p>数据来源于 <a href="https://github.com/bangumi-data/bangumi-data" target="_blank">bangumi-data</a> 项目。</p>
-                </details>
-            </div>
-            
-            <div v-if="bangumiImportStatus" class="status-message">{{ bangumiImportStatus }}</div>
+             </div>
+             
+             <div v-if="bangumiImportStatus" class="status-text">
+                {{ bangumiImportStatus }}
+             </div>
+
+             <div class="help-text">
+                <h4>{{ t('import.seasonFormat') }}</h4>
+                <p>{{ t('import.seasonFormatDesc') }}</p>
+                <ul>
+                   <li>{{ t('import.seasonQ4') }}: <code>2024q4</code></li>
+                   <li>{{ t('import.seasonQ3') }}: <code>2024q3</code></li>
+                   <li>{{ t('import.seasonQ2') }}: <code>2024q2</code></li>
+                   <li>{{ t('import.seasonQ1') }}: <code>2024q1</code></li>
+                </ul>
+             </div>
+          </div>
         </div>
         
         <div v-if="error" class="error-message">{{ error }}</div>
@@ -573,5 +578,92 @@ function handleClose() {
 .bangumi-guide p {
     margin: 5px 0;
     line-height: 1.4;
+}
+
+.modal-input {
+  padding: 10px;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg, #fff);
+  color: var(--text-color);
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 14px;
+}
+
+.help-text {
+  font-size: 0.9em;
+  color: var(--text-color);
+  opacity: 0.8;
+  margin-top: 15px;
+}
+
+.help-text ul, .help-text ol {
+  padding-left: 20px;
+  margin: 5px 0;
+}
+
+.help-text h4 {
+    margin-bottom: 5px;
+    font-size: 1em;
+}
+
+.section-desc {
+    color: var(--text-color);
+    margin-bottom: 10px;
+    font-size: 14px;
+}
+
+.status-text {
+    margin-top: 10px;
+    color: var(--primary-color, #007bff);
+    text-align: center;
+    font-weight: bold;
+}
+
+.source-info {
+    font-size: 12px;
+    color: var(--text-color);
+    opacity: 0.7;
+    margin-bottom: 10px;
+}
+
+.file-drop-area {
+    border: 2px dashed var(--border-color);
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--bg-light-color);
+    border-radius: 8px;
+}
+
+.file-drop-area:hover {
+    background: var(--border-color);
+    color: var(--bg-color);
+}
+
+.file-drop-area .icon {
+    font-size: 40px;
+    margin-bottom: 10px;
+}
+
+.file-drop-area .text {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.file-drop-area .hint {
+    font-size: 12px;
+    opacity: 0.7;
+    margin-top: 5px;
+}
+
+.warning-text {
+    color: #ff9800;
+    font-size: 12px;
+    margin-bottom: 15px;
 }
 </style>

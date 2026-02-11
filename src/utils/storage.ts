@@ -1,7 +1,8 @@
 import type { Tier, TierConfig, AnimeItem } from '../types'
 import db from './db'
 import { toRaw } from 'vue'
-import { getDefaultTiers, getSetting } from './configManager'
+import { getDefaultTiers as _getDefaultTiers, getSetting } from './configManager'
+import { i18n } from '../i18n'
 
 const STORAGE_KEY = 'tier-list-data'
 const TIER_CONFIG_KEY = 'tier-config'
@@ -16,7 +17,12 @@ const EXPORT_SCALE_KEY = 'export-scale'
 /**
  * 默认评分等级配置
  */
-export const DEFAULT_TIER_CONFIGS = getDefaultTiers()
+/**
+ * 默认评分等级配置 (Static fallback)
+ */
+export const DEFAULT_TIER_CONFIGS = _getDefaultTiers('zh')
+
+export const getDefaultTiers = _getDefaultTiers
 
 /**
  * Helper: Convert DataURL to Blob
@@ -539,4 +545,34 @@ export function resetSettings(): void {
     console.error('重置设置失败:', error)
     throw error
   }
+}
+
+/**
+ * 切换语言时的等级处理
+ * 关键：只改 label，不改 id，防止作品数据关联断裂
+ * 如果 label 是默认的（例如从英文切中文，label 是 S），则自动转为中文默认（夯）
+ * 如果 label 是自定义的，则保持不变
+ */
+export function handleLanguageChange(newLocale: 'zh' | 'en') {
+  const configs = loadTierConfigs()
+
+  const zhDefaults = ['夯', '顶级', '人上人', 'NPC', '拉完了']
+  const enDefaults = ['S', 'A', 'B', 'C', 'D']
+
+  const sourceDefaults = newLocale === 'zh' ? enDefaults : zhDefaults
+  const targetDefaults = newLocale === 'zh' ? zhDefaults : enDefaults
+
+  configs.forEach(config => {
+    // 检查当前 label 是否在源语言默认列表中
+    const index = sourceDefaults.indexOf(config.label)
+    if (index !== -1 && index < targetDefaults.length) {
+      // 如果是默认 label，则更新为目标语言对应的默认 label
+      config.label = targetDefaults[index]
+    }
+  })
+
+  saveTierConfigs(configs)
+
+  localStorage.setItem('user-language', newLocale)
+  i18n.global.locale.value = newLocale
 }

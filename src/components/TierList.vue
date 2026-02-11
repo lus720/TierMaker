@@ -3,6 +3,9 @@ import { ref, onMounted, watch, nextTick } from 'vue'
 import TierRow from './TierRow.vue'
 import { getSize } from '../utils/configManager'
 import type { Tier, TierConfig, AnimeItem } from '../types'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   tiers: Tier[]
@@ -200,7 +203,7 @@ watch(
           v-if="tier.rows.length > 1"
           class="delete-row-btn"
           @click="emit('delete-row', tier.id, row.id)"
-          title="删除此行"
+          :title="t('tierList.deleteRow')"
         >
           ×
         </button>
