@@ -37,7 +37,7 @@ function handleFileChange(event: Event) {
       const data = JSON.parse(jsonStr)
       // Basic validation
       if (!data.tiers || !data.tierConfigs) {
-        error.value = t('import.invalidConfig')
+        error.value = t('import.invalidFormat')
         return
       }
       emit('import-data', data)
@@ -63,7 +63,7 @@ const vndbImportStatus = ref('')
 async function handleVndbImport() {
   console.log('[ImportModal] handleVndbImport triggered. UserID:', vndbUserId.value)
   if (!vndbUserId.value.trim()) {
-    error.value = t('import.vndbIdRequired')
+    error.value = t('import.vndbEmptyId')
     return
   }
   

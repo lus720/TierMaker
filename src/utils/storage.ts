@@ -2,7 +2,7 @@ import type { Tier, TierConfig, AnimeItem } from '../types'
 import db from './db'
 import { toRaw } from 'vue'
 import { getDefaultTiers as _getDefaultTiers, getSetting } from './configManager'
-import { i18n } from '../i18n'
+import { i18n, getCurrentLocale } from '../i18n'
 
 const STORAGE_KEY = 'tier-list-data'
 const TIER_CONFIG_KEY = 'tier-config'
@@ -20,7 +20,7 @@ const EXPORT_SCALE_KEY = 'export-scale'
 /**
  * 默认评分等级配置 (Static fallback)
  */
-export const DEFAULT_TIER_CONFIGS = _getDefaultTiers('zh')
+export const DEFAULT_TIER_CONFIGS = _getDefaultTiers(getCurrentLocale())
 
 export const getDefaultTiers = _getDefaultTiers
 

@@ -46,6 +46,7 @@
         "bangumiTab": "Seasonal Anime",
         "fileDesc": "Upload a backup file (JSON) to restore data.",
         "fileWarning": "Warning: This will overwrite all current data!",
+        "fileHint": "Supports .json format",
         "selectFile": "📄 Select File",
         "invalidFormat": "Invalid file format",
         "parseFailed": "Failed to parse file: ",
@@ -200,11 +201,11 @@
         "invalidJson": "Invalid JSON response",
         "allProxiesFailed": "All proxies failed",
         "fetchAnimeFailed": "Failed to fetch anime: {msg}",
-        "month1": " Jan",
-        "month4": " Apr",
-        "month7": " Jul",
-        "month10": " Oct",
-        "yearSuffix": " "
+        "month1": "Jan",
+        "month4": "Apr",
+        "month7": "Jul",
+        "month10": "Oct",
+        "yearSuffix": ""
     },
     "tierList": {
         "deleteRow": "Delete Row"

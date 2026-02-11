@@ -65,7 +65,7 @@ watch(() => props.configs, (newConfigs) => {
     if (config.fontSize === undefined || config.fontSize === null) {
       config.fontSize = 32
     }
-    inputValues.value[index] = config.label
+    inputValues.value[index] = config.label || config.id
   })
   localConfigs.value = newLocalConfigs
 }, { immediate: true })

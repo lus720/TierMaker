@@ -46,6 +46,7 @@
         "bangumiTab": "季度动漫",
         "fileDesc": "上传之前的备份文件 (JSON) 以恢复数据。",
         "fileWarning": "注意：这将覆盖当前的所有数据！",
+        "fileHint": "支持 .json 格式",
         "selectFile": "📄 选择文件",
         "invalidFormat": "无效的配置文件格式",
         "parseFailed": "解析文件失败: ",
