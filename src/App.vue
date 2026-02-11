@@ -487,7 +487,6 @@ function handleCloseEditItem() {
 }
 
 function handleUpdateConfigs(newConfigs: TierConfig[]) {
-  console.log('[App] handleUpdateConfigs received:', JSON.parse(JSON.stringify(newConfigs)))
   // 保存旧配置的映射（通过 order 映射到 tier）
   const oldConfigs = tierConfigs.value
   const oldTierByOrder = new Map<number, Tier>()
