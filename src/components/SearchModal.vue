@@ -5,6 +5,9 @@ import { searchBangumiAnime, searchBangumiCharacters, getCharactersBySubjectId }
 import { generateDefaultUrl } from '../utils/url'
 import { saveLastSearchSource, loadLastSearchSource } from '../utils/storage'
 import type { AnimeItem, ApiSource, SearchResult } from '../types'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   enableImportCharacters?: boolean // 是否启用批量导入角色功能
@@ -240,24 +243,24 @@ function handleMouseUp(event: MouseEvent) {
 
 function getPlaceholder() {
   if (apiSource.value === 'bangumi') {
-    return '输入动画名称...'
+    return t('search.animePlaceholder')
   } else if (apiSource.value === 'character') {
-    return '输入角色名称...'
+    return t('search.characterPlaceholder')
   } else if (apiSource.value === 'local') {
-    return '输入自定义标题...'
+    return t('search.localPlaceholder')
   }
-  return '输入搜索关键词...'
+  return t('search.defaultPlaceholder')
 }
 
 function getTitle() {
   if (apiSource.value === 'bangumi') {
-    return '搜索动画'
+    return t('search.searchAnime')
   } else if (apiSource.value === 'character') {
-    return '搜索角色'
+    return t('search.searchCharacter')
   } else if (apiSource.value === 'local') {
-    return '本地上传'
+    return t('search.localUpload')
   }
-  return '搜索'
+  return t('search.search')
 }
 
 // 获取 Bangumi 类型名称
@@ -265,11 +268,11 @@ function getBgmTypeName(type?: number): string {
   if (!type) return ''
   
   const typeMap: Record<number, string> = {
-    1: '书籍',
-    2: '动画',
-    3: '音乐',
-    4: '游戏',
-    6: '三次元',
+    1: t('search.bgmType.book'),
+    2: t('search.bgmType.anime'),
+    3: t('search.bgmType.music'),
+    4: t('search.bgmType.game'),
+    6: t('search.bgmType.real'),
   }
   
   return typeMap[type] || ''
@@ -483,14 +486,14 @@ function handleImageError(event: Event) {
           :class="{ active: apiSource === 'character' }"
           @click="apiSource = 'character'"
         >
-          角色
+          {{ t('search.character') }}
         </button>
         <button
           class="api-btn"
           :class="{ active: apiSource === 'local' }"
           @click="apiSource = 'local'"
         >
-          本地上传
+          {{ t('search.localUpload') }}
         </button>
       </div>
       
@@ -516,22 +519,22 @@ function handleImageError(event: Event) {
             />
             <div v-if="!uploadedImage" class="upload-placeholder">
               <div class="upload-icon">📷</div>
-              <div class="upload-text">点击选择图片或拖拽图片到此处</div>
-              <div class="upload-hint">支持 JPG、PNG、GIF 等格式，最大 10MB</div>
+              <div class="upload-text">{{ t('search.uploadPlaceholder') }}</div>
+              <div class="upload-hint">{{ t('search.uploadHint') }}</div>
             </div>
             <div v-else class="upload-preview">
               <img :src="uploadedImage" alt="预览" class="preview-image" />
-              <button class="remove-image-btn" @click.stop="clearUploadedImage" title="移除图片">×</button>
+              <button class="remove-image-btn" @click.stop="clearUploadedImage" :title="t('search.removeImage')">×</button>
             </div>
           </div>
           
           <div class="title-input-section">
-            <label for="custom-title" class="title-label">自定义标题：</label>
+            <label for="custom-title" class="title-label">{{ t('search.customTitleLabel') }}</label>
             <input
               id="custom-title"
               v-model="customTitle"
               type="text"
-              placeholder="输入标题..."
+              :placeholder="t('search.titlePlaceholder')"
               class="title-input"
               @keydown.enter="handleLocalUploadConfirm"
             />
@@ -543,7 +546,7 @@ function handleImageError(event: Event) {
               @click="handleLocalUploadConfirm"
               :disabled="!uploadedImage || !customTitle.trim()"
             >
-              确认添加
+              {{ t('search.confirmAdd') }}
             </button>
           </div>
         </div>
@@ -560,14 +563,14 @@ function handleImageError(event: Event) {
             @keydown.enter="handleSearch"
           />
           <button class="search-btn" @click="handleSearch" :disabled="loading">
-            {{ loading ? '搜索中...' : '搜索' }}
+            {{ loading ? t('search.searching') : t('search.search') }}
           </button>
         </div>
         
         <div class="results-container">
         <div v-if="error" class="error-message">{{ error }}</div>
-        <div v-else-if="loading && results.length === 0" class="loading">搜索中...</div>
-        <div v-else-if="results.length === 0 && keyword" class="empty">未找到结果</div>
+        <div v-else-if="loading && results.length === 0" class="loading">{{ t('search.loading') }}</div>
+        <div v-else-if="results.length === 0 && keyword" class="empty">{{ t('search.noResults') }}</div>
         <div v-else class="results-grid">
           <div
             v-for="(result, index) in results"
@@ -595,9 +598,9 @@ function handleImageError(event: Event) {
               class="import-characters-btn"
               :disabled="importingCharacters === result.id"
               @click.stop="handleImportCharacters(result.id as number, $event)"
-              :title="importingCharacters === result.id ? '导入中...' : '导入所有角色'"
+              :title="importingCharacters === result.id ? t('search.importingCharacters') : t('search.importAllCharacters')"
             >
-              {{ importingCharacters === result.id ? '导入中...' : '导入角色' }}
+              {{ importingCharacters === result.id ? t('search.importingCharacters') : t('search.importCharacters') }}
             </button>
           </div>
         </div>
@@ -608,7 +611,7 @@ function handleImageError(event: Event) {
           @click="loadMore"
           :disabled="loading"
         >
-          {{ loading ? '加载中...' : '加载更多' }}
+          {{ loading ? t('search.loading') : t('search.loadMore') }}
         </button>
       </div>
       </template>

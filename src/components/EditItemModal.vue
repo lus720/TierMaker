@@ -2,8 +2,11 @@
 import { computed, ref, toRaw, watch, onMounted, nextTick, onUnmounted } from 'vue'
 import type { AnimeItem, CropPosition } from '../types'
 import { generateDefaultUrl } from '../utils/url'
+import { useI18n } from 'vue-i18n'
 import { getSize, getSetting } from '../utils/configManager'
 import { adaptCropToRatio, normalizeCropResolution } from '../utils/cropUtils'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   item: AnimeItem | null
@@ -538,38 +541,20 @@ function handleMouseDown(event: MouseEvent) {
     return
   }
   const inside = isInsideModalContent(event.clientX, event.clientY)
-  console.log('[EditItemModal] MouseDown', {
-    clientX: event.clientX,
-    clientY: event.clientY,
-    inside,
-    target: target?.className
-  })
   mouseDownInside.value = inside
   wasMouseDownOnModal.value = true
 }
 
 function handleMouseUp(event: MouseEvent) {
-  console.log('[EditItemModal] MouseUp Start', {
-    clientX: event.clientX,
-    clientY: event.clientY,
-    isLongPressTriggered: props.isLongPressTriggered,
-    hasHandledLongPressMouseUp: hasHandledLongPressMouseUp.value,
-    isDraggingMask: isDraggingMask.value,
-    mouseDownInside: mouseDownInside.value,
-    wasMouseDownOnModal: wasMouseDownOnModal.value
-  })
-
   // 如果是长按触发的编辑，且还没有处理过mouseup
   if (props.isLongPressTriggered && !hasHandledLongPressMouseUp.value) {
     // 只有当这次 MouseUp 没有对应的 MouseDown 时（说明是长按的释放），才忽略
     if (!wasMouseDownOnModal.value) {
-        console.log('[EditItemModal] Ignoring MouseUp (Long Press First Release - No MouseDown observed)')
         mouseDownInside.value = false
         hasHandledLongPressMouseUp.value = true
         wasMouseDownOnModal.value = false
         return
     } else {
-        console.log('[EditItemModal] Processing MouseUp (Long Press Triggered but MouseDown observed - strictly a new click)')
         // 既然观察到了 MouseDown，说明用户在 Modal 打开后点击了一次
         // 这不应该是长按的结尾，而是一次新的交互
         // 因此我们要让它通过，去执行后面的 closing check
@@ -579,19 +564,12 @@ function handleMouseUp(event: MouseEvent) {
 
   // 如果正在拖动遮罩框，不处理退出
   if (isDraggingMask.value) {
-    console.log('[EditItemModal] Ignoring MouseUp (Dragging Mask)')
     return
   }
   
   const mouseUpInside = isInsideModalContent(event.clientX, event.clientY)
-  console.log('[EditItemModal] MouseUp Check', {
-    mouseDownInside: mouseDownInside.value,
-    mouseUpInside,
-    shouldClose: !mouseDownInside.value && !mouseUpInside
-  })
 
   if (!mouseDownInside.value && !mouseUpInside) {
-    console.log('[EditItemModal] Closing Modal (Auto Save)')
     handleSave()
   }
   mouseDownInside.value = false
@@ -780,110 +758,104 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
   <div v-if="item" class="modal-overlay" @mousedown="handleMouseDown" @mouseup="handleMouseUp">
     <div class="modal-content" ref="modalContentRef">
       <div class="modal-header">
-        <h2>编辑作品</h2>
+        <h2 class="modal-title">{{ t('edit.title') }}</h2>
         <button class="close-btn" @click="handleCancel">×</button>
       </div>
       
       <div class="modal-body">
-        <!-- 作品名称 -->
-        <div class="form-group">
-          <label>作品名称</label>
-          <input
-            v-model="name"
-            type="text"
-            placeholder="输入作品名称"
-            class="form-input"
-          />
-        </div>
-        
-        <!-- 图片预览 -->
-        <div class="form-group">
-          <label>图片预览</label>
-          <div class="image-preview-container" v-if="imagePreview">
-            <!-- 原图（尽量大，不拉伸） -->
-            <img
-              ref="originalImageRef"
-              :src="imagePreview"
-              alt="原图"
-              class="image-preview-original"
-              @load="updatePreviewCrop"
-            />
-            <!-- 遮罩层：将白框外的部分加暗，突出选中区域 -->
-            <div class="image-preview-overlay" :style="overlayStyle"></div>
-            <!-- 预览区域（白色框框选的部分就是预览结果，可拖动） -->
-            <div 
-              class="image-preview-mask" 
-              :style="previewMaskStyle"
-              ref="maskElementRef"
-              @mousedown.stop.prevent="handleMaskMouseDown"
-            ></div>
-            <!-- 四个顶点红色标记点（用于检测图片位置） -->
-            <div class="image-corner-marker" :style="cornerTopLeftStyle"></div>
-            <div class="image-corner-marker" :style="cornerTopRightStyle"></div>
-            <div class="image-corner-marker" :style="cornerBottomLeftStyle"></div>
-            <div class="image-corner-marker" :style="cornerBottomRightStyle"></div>
-          </div>
-          <div v-else class="image-placeholder">暂无图片</div>
-        </div>
-        
-        <!-- 提示信息 -->
-        <div class="form-group">
-          <div class="form-hint">
-            拖动白色框框可以调整裁剪位置
-          </div>
-        </div>
-        
-        <!-- 图片 URL -->
-        <div class="form-group">
-          <label>图片 URL</label>
-          <input
-            v-model="imageUrl"
-            type="url"
-            placeholder="输入图片 URL"
-            class="form-input"
-            @input="handleImageUrlChange"
-          />
-        </div>
-        
-        <!-- 上传本地文件 -->
-        <div class="form-group">
-          <label>或上传本地图片</label>
-          <input
-            type="file"
-            accept="image/*"
-            class="form-file-input"
-            @change="handleFileSelect"
-          />
-        </div>
-        
-        <!-- 自定义链接 -->
-        <div class="form-group">
-          <label>
-            自定义链接（可选）
-            <button
-              v-if="customUrl"
-              class="clear-btn"
-              @click="clearCustomUrl"
-              title="清除自定义链接"
-            >
-              清除
-            </button>
-          </label>
-          <input
-            v-model="customUrl"
-            type="url"
-            placeholder="输入自定义链接（留空则使用默认链接）"
-            class="form-input"
-          />
-          <div class="form-hint">
-            留空将根据作品 ID 自动生成链接（Bangumi/VNDB）
+        <!-- Flex container for Layout -->
+        <div class="edit-layout">
+          
+          <!-- Left Column: Form Inputs -->
+          <div class="edit-form">
+            
+            <div class="form-group">
+              <label for="item-name">{{ t('edit.name') }}</label>
+              <input
+                id="item-name"
+                v-model="name"
+                type="text"
+                class="form-input"
+                :placeholder="t('edit.namePlaceholder')"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label>{{ t('edit.imagePreview') }}</label>
+              <div class="image-preview-container">
+                <div v-if="!imagePreview" class="no-image">{{ t('edit.noImage') }}</div>
+                <img
+                  v-else
+                  ref="originalImageRef"
+                  :src="imagePreview"
+                  alt="原图"
+                  class="image-preview-original"
+                  @load="updatePreviewCrop"
+                />
+                <!-- 遮罩层：将白框外的部分加暗，突出选中区域 -->
+                <div class="image-preview-overlay" :style="overlayStyle"></div>
+                <!-- 预览区域（白色框框选的部分就是预览结果，可拖动） -->
+                <div 
+                  class="image-preview-mask" 
+                  :style="previewMaskStyle"
+                  ref="maskElementRef"
+                  @mousedown.stop.prevent="handleMaskMouseDown"
+                ></div>
+                <!-- 四个顶点红色标记点（用于检测图片位置） -->
+                <div class="image-corner-marker" :style="cornerTopLeftStyle"></div>
+                <div class="image-corner-marker" :style="cornerTopRightStyle"></div>
+                <div class="image-corner-marker" :style="cornerBottomLeftStyle"></div>
+                <div class="image-corner-marker" :style="cornerBottomRightStyle"></div>
+              </div>
+              
+              <div v-if="imagePreview" class="crop-hint">{{ t('edit.cropHint') }}</div>
+            </div>
+
+            <div class="form-group">
+              <label for="item-image">{{ t('edit.imageUrl') }}</label>
+              <div class="input-with-action">
+                <input
+                  id="item-image"
+                  v-model="imageUrl"
+                  type="text"
+                  class="form-input"
+                  :placeholder="t('edit.imageUrlPlaceholder')"
+                  @change="handleImageUrlChange"
+                />
+                <button v-if="imageUrl" class="clear-btn" @click="imageUrl = ''" :title="t('edit.clear')">×</button>
+              </div>
+              <div class="file-upload">
+                 <span class="file-upload-text">{{ t('edit.uploadLocal') }}</span>
+                 <input 
+                    type="file" 
+                    accept="image/*" 
+                    class="file-input"
+                    @change="handleFileSelect"
+                 />
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label for="item-custom-url">{{ t('edit.customUrl') }}</label>
+              <div class="input-with-action">
+                <input
+                  id="item-custom-url"
+                  v-model="customUrl"
+                  type="text"
+                  class="form-input"
+                  :placeholder="t('edit.customUrlPlaceholder')"
+                />
+                 <button v-if="customUrl" class="clear-btn" @click="clearCustomUrl" :title="t('edit.clearCustomUrl')">×</button>
+              </div>
+              <p class="form-hint">{{ t('edit.customUrlHint') }}</p>
+            </div>
           </div>
         </div>
       </div>
       
       <div class="modal-footer">
-        <button class="btn btn-secondary" @click="handleCancel">取消</button>
-        <button class="btn btn-primary" @click="handleSave">保存</button>
+        <button class="btn btn-cancel" @click="handleCancel">{{ t('edit.cancel') }}</button>
+        <button class="btn btn-save" @click="handleSave">{{ t('edit.save') }}</button>
       </div>
     </div>
   </div>

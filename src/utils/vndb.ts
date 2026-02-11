@@ -1,4 +1,5 @@
 import type { VndbSearchResult } from '../types'
+import { i18n } from '../i18n'
 
 const VNDB_API_BASE = 'https://api.vndb.org/kana'
 
@@ -78,14 +79,14 @@ export async function searchVndbVisualNovel(
 
     if (!response.ok) {
       if (response.status === 400) {
-        let errorMessage = `请求格式错误: ${response.status}`
+        let errorMessage = i18n.global.t('vndb.requestFormatError', { msg: response.status })
         try {
           const errorData = await response.json()
           // VNDB API 错误响应格式：{ "id": "error_id", "msg": "error message" }
           if (errorData.id) {
-            errorMessage = `请求格式错误: ${errorData.id}${errorData.msg ? ` - ${errorData.msg}` : ''}`
+            errorMessage = i18n.global.t('vndb.requestFormatError', { msg: `${errorData.id}${errorData.msg ? ` - ${errorData.msg}` : ''}` })
           } else if (errorData.msg) {
-            errorMessage = `请求格式错误: ${errorData.msg}`
+            errorMessage = i18n.global.t('vndb.requestFormatError', { msg: errorData.msg })
           }
         } catch (e) {
           // 如果无法解析错误响应，使用默认消息
@@ -93,9 +94,9 @@ export async function searchVndbVisualNovel(
         throw new VndbError(errorMessage)
       }
       if (response.status === 401) {
-        throw new VndbError('API 认证失败')
+        throw new VndbError(i18n.global.t('vndb.apiAuthFailed'))
       }
-      throw new VndbError(`请求失败: ${response.status} ${response.statusText}`)
+      throw new VndbError(i18n.global.t('vndb.requestFailed', { status: response.status, text: response.statusText }))
     }
 
     const result: VndbResponse = await response.json()
@@ -141,7 +142,7 @@ export async function searchVndbVisualNovel(
     if (error instanceof VndbError) {
       throw error
     }
-    throw new VndbError(`网络错误: ${error.message}`)
+    throw new VndbError(i18n.global.t('vndb.networkError', { msg: error.message }))
   }
 }
 
@@ -166,7 +167,7 @@ export async function getVisualNovelDetail(id: string): Promise<any> {
     })
 
     if (!response.ok) {
-      throw new VndbError(`获取详情失败: ${response.status}`)
+      throw new VndbError(i18n.global.t('vndb.fetchDetailFailed', { status: response.status }))
     }
 
     const result: VndbResponse = await response.json()
@@ -175,7 +176,7 @@ export async function getVisualNovelDetail(id: string): Promise<any> {
     if (error instanceof VndbError) {
       throw error
     }
-    throw new VndbError(`网络错误: ${error.message}`)
+    throw new VndbError(i18n.global.t('vndb.networkError', { msg: error.message }))
   }
 }
 
@@ -184,7 +185,7 @@ export async function getVisualNovelDetail(id: string): Promise<any> {
  */
 export async function fetchVndbUserList(userId: string): Promise<VndbSearchResult[]> {
   if (!userId.trim()) {
-    throw new VndbError('请输入用户ID')
+    throw new VndbError(i18n.global.t('vndb.enterUserId'))
   }
 
   try {
@@ -217,9 +218,9 @@ export async function fetchVndbUserList(userId: string): Promise<VndbSearchResul
 
       if (!response.ok) {
         if (response.status === 404) {
-          throw new VndbError('未找到用户，请检查ID是否正确')
+          throw new VndbError(i18n.global.t('vndb.userNotFound'))
         }
-        throw new VndbError(`获取用户列表失败: ${response.status}`)
+        throw new VndbError(i18n.global.t('vndb.fetchUserListFailed', { status: response.status }))
       }
 
       const data: VndbResponse = await response.json()
@@ -303,6 +304,6 @@ export async function fetchVndbUserList(userId: string): Promise<VndbSearchResul
     if (error instanceof VndbError) {
       throw error
     }
-    throw new VndbError(`网络错误: ${error.message}`)
+    throw new VndbError(i18n.global.t('vndb.networkError', { msg: error.message }))
   }
 }

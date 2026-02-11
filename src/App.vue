@@ -1,3 +1,4 @@
+```
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 import TierList from './components/TierList.vue'
@@ -6,10 +7,13 @@ import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
 import ImportModal from './components/ImportModal.vue'
 import ExportModal from './components/ExportModal.vue'
+import { useI18n } from 'vue-i18n'
+
+const { t, locale } = useI18n()
 
 import { initConfigStyles, getSetting } from './utils/configManager'
 import type { Tier, AnimeItem, TierConfig } from './types'
-import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadTitle, saveTitle, loadTitleFontSize, saveTitleFontSize, importAllData, clearItemsAndTitle, resetSettings, loadThemePreference, loadHideItemNames, loadExportScale, DEFAULT_TIER_CONFIGS, generateUuid, type ExportData } from './utils/storage'
+import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadThemePreference, saveThemePreference, saveTitle, loadTitle, saveTitleFontSize, loadTitleFontSize, clearItemsAndTitle, importAllData, type ExportData, DEFAULT_TIER_CONFIGS, getDefaultTiers, generateUuid, handleLanguageChange, resetSettings, loadHideItemNames, loadExportScale } from './utils/storage'
 
 const tiers = ref<Tier[]>([])
 const unrankedTiers = ref<Tier[]>([{
@@ -483,48 +487,30 @@ function handleCloseEditItem() {
 }
 
 function handleUpdateConfigs(newConfigs: TierConfig[]) {
-  // 保存旧配置的映射（通过 order 映射到 tier）
-  const oldConfigs = tierConfigs.value
-  const oldTierByOrder = new Map<number, Tier>()
-  tiers.value.forEach(tier => {
-    const oldConfig = oldConfigs.find(c => c.id === tier.id)
-    if (oldConfig) {
-      oldTierByOrder.set(oldConfig.order, tier)
-    }
+  // 1. Identify removed tiers and move their items to Unranked
+  const removedTiers = tiers.value.filter(t => !newConfigs.some(c => c.id === t.id))
+  
+  removedTiers.forEach(tier => {
+    tier.rows.forEach(row => {
+      if (row.items.length > 0) {
+        // Add items to unranked
+        unrankedTiers.value[0].rows[0].items.push(...row.items)
+      }
+    })
   })
-  
-  tierConfigs.value = newConfigs
-  saveTierConfigs(newConfigs)
-  
-  // 构建新的 tiers 数组，通过 order 匹配保留作品数据
+
+  // 2. Construct new tiers array based on newConfigs order
   const newTiers: Tier[] = []
-  const processedOldTiers = new Set<Tier>()
   
   newConfigs.forEach(config => {
-    // 通过 order 找到对应的旧 tier（如果有）
-    const oldTier = oldTierByOrder.get(config.order)
+    const existingTier = tiers.value.find(t => t.id === config.id)
     
-    if (oldTier) {
-      // 找到匹配的旧 tier，更新 id 但保留所有作品数据
-      oldTier.id = config.id
-      // 更新 row 的 id（因为 row id 包含 tier id）
-      oldTier.rows.forEach((row, rowIndex) => {
-        if (rowIndex === 0) {
-          row.id = `${config.id}-row-0`
-        } else {
-          // 如果有多行，保持原有格式
-          const match = row.id.match(/-row-(\d+)$/)
-          if (match) {
-            row.id = `${config.id}-row-${match[1]}`
-          } else {
-            row.id = `${config.id}-row-${rowIndex}`
-          }
-        }
-      })
-      newTiers.push(oldTier)
-      processedOldTiers.add(oldTier)
+    if (existingTier) {
+      // Keep existing tier data (ID is immutable, so no need to update it)
+      // Just push it to the new array in the correct order
+      newTiers.push(existingTier)
     } else {
-      // 没有找到匹配的旧 tier（新增的等级），创建新的空 tier
+      // Create new tier
       newTiers.push({
         id: config.id,
         rows: [{
@@ -534,14 +520,16 @@ function handleUpdateConfigs(newConfigs: TierConfig[]) {
       })
     }
   })
-  
-  // 替换整个 tiers 数组
+
+  // 3. Update state
+  tierConfigs.value = newConfigs
+  saveTierConfigs(newConfigs)
   tiers.value = newTiers
-  
-  // 保存更新后的数据
+
+  // Save everything
   saveTierData([...tiers.value, ...unrankedTiers.value])
-  
-  // 等待 DOM 更新后重新计算等级块宽度
+
+  // Update UI
   nextTick(() => {
     setTimeout(() => {
       tierListRef.value?.updateLabelWidth()
@@ -612,10 +600,11 @@ function handleResetSettings() {
   try {
     // 重置所有设置，但保留作品数据和标题
     resetSettings()
+    console.log('[App] handleResetSettings triggered')
     
-    // 重置评分等级配置
-    tierConfigs.value = JSON.parse(JSON.stringify(DEFAULT_TIER_CONFIGS))
-    saveTierConfigs(tierConfigs.value)
+    // 重置评分等级配置 (使用 handleUpdateConfigs 安全地同步，它会处理多余等级的物品归档)
+    const defaultConfigs = getDefaultTiers(locale.value)
+    handleUpdateConfigs(defaultConfigs)
     
     // 重置标题字体大小
     titleFontSize.value = 32
@@ -632,30 +621,6 @@ function handleResetSettings() {
     exportScale.value = 4
     
     // 注意：不重置标题，保留用户设置的标题
-    
-    // 同步 tiers 和 tierConfigs（确保结构一致）
-    const configIds = new Set(tierConfigs.value.map(c => c.id))
-    tiers.value = tiers.value.filter(t => configIds.has(t.id))
-    
-    tierConfigs.value.forEach(config => {
-      if (!tiers.value.find(t => t.id === config.id)) {
-        tiers.value.push({
-          id: config.id,
-          rows: [{
-            id: `${config.id}-row-0`,
-            items: [],
-          }],
-        })
-      }
-    })
-    
-    tiers.value.sort((a, b) => {
-      const aOrder = tierConfigs.value.find(c => c.id === a.id)?.order ?? 999
-      const bOrder = tierConfigs.value.find(c => c.id === b.id)?.order ?? 999
-      return aOrder - bOrder
-    })
-    
-    saveTierData([...tiers.value, ...unrankedTiers.value])
     
     // 重置成功，刷新设置页面内容让用户注意到重置已完成
     if (showConfig.value) {
@@ -741,6 +706,15 @@ function handleCancelClear() {
   showClearConfirm.value = false
 }
 
+function toggleLanguage() {
+  const current = locale.value
+  const next = current === 'zh' ? 'en' : 'zh'
+  handleLanguageChange(next)
+  // Reload configs to reflect potential language changes in default tiers
+  tierConfigs.value = loadTierConfigs()
+  // Force title update if it's default? No, keeps user title.
+}
+
 // 导入数据
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
@@ -806,13 +780,14 @@ async function handleDataImport(data: ExportData) {
           }
         })
         
+        
         showImportModal.value = false // Close modal on success
      } else {
-        alert(`导入失败: ${result.error || '未知错误'}`)
+        alert(`${t('app.importFailed')}: ${result.error || t('app.unknownError')}`)
      }
   } catch (error) {
      console.error('导入失败:', error)
-     alert('导入过程中发生错误')
+     alert(t('app.importError'))
   }
 }
 
@@ -925,18 +900,21 @@ function handleFileImport(e: Event) {
         @keydown.enter.prevent="titleRef?.blur()"
         @keydown.esc.prevent="titleRef?.blur()"
         ref="titleRef"
-        title="点击编辑标题"
+        :title="t('app.editTitle')"
       ></h1>
       <div class="header-actions">
+        <button class="btn btn-secondary" @click="toggleLanguage" :title="t('config.language')">
+           {{ locale === 'zh' ? 'English' : '中文' }}
+        </button>
         <button 
           class="btn btn-secondary" 
           @click="showExportModal = true"
-          title="导出"
+          :title="t('app.export')"
         >
-          导出
+          {{ t('app.export') }}
         </button>
-        <button class="btn btn-secondary" @click="handleImportClick" title="导入数据">
-          导入
+        <button class="btn btn-secondary" @click="handleImportClick" :title="t('app.import')">
+          {{ t('app.import') }}
         </button>
         <input
           ref="fileInputRef"
@@ -945,11 +923,11 @@ function handleFileImport(e: Event) {
           style="display: none"
           @change="handleFileImport"
         />
-        <button class="btn btn-danger" @click="handleClearClick" title="清空所有作品和恢复默认标题">
-          清空数据
+        <button class="btn btn-danger" @click="handleClearClick" :title="t('app.clearData')">
+          {{ t('app.clearData') }}
         </button>
         <button class="btn btn-secondary" @click="showConfig = true">
-          设置
+          {{ t('app.settings') }}
         </button>
       </div>
     </header>

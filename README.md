@@ -85,3 +85,11 @@ tier-list-simple/
 变更影响模拟
 
 单一职责原则 (SRP) 与泄露检测
+
+2026-02-09-i18n-design.md
+
+这是一个测试案例默认等级: S,A,B,C,D；每个等级都有一个作品s,a,b,c,d
+调整S和A的顺序，那么A,S,B,C,D，作品对应a,s,b,c,d
+删除B：A,S,C,D，作品对应a,s,c,d，备选框，b
+删除A：S,C,D，作品对应s,c,d，备选框，a，b
+添加E：S,C,D,E，作品对应s,c,d,e，备选框，a，b

@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import type { TierConfig } from '../types'
 import { getSetting, getSize, updateSizes, saveLocalConfig, clearLocalConfig } from '../utils/configManager'
 import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadThemePreference, saveThemePreference, loadHideItemNames, saveHideItemNames, loadExportScale, saveExportScale, DEFAULT_TIER_CONFIGS } from '../utils/storage'
+import { isDarkMode } from '../utils/colors'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   configs: TierConfig[]
@@ -25,7 +29,7 @@ const themePreference = ref<'light' | 'dark' | 'auto'>('auto')
 const hideItemNames = ref<boolean>(false)
 const exportScale = ref<number>(4)
 const compactMode = ref<boolean>(false)
-const inputValues = ref<Record<number, string>>({})
+
 const modalContentRef = ref<HTMLElement | null>(null)
 const mouseDownInside = ref(false)
 
@@ -46,26 +50,41 @@ const presetColors = [
   '#cfcfcf', // 灰色
 ]
 
+// Initialize local state from props ONCE on mount
+// We DO NOT watch props anymore to avoid overwriting local changes during typing
 watch(() => props.configs, (newConfigs) => {
-  const newLocalConfigs = JSON.parse(JSON.stringify(newConfigs))
+  // Only initialize if localConfigs is empty (first load) or length mismatch (maybe reset?)
+  // Actually, to support "Reset" from parent, we need a way to know if it's a "reset" or just normal parent update.
+  // The parent forces re-render by changing :key, so onMounted is enough for initialization.
+  // EXCEPT if the parent updates tiers *while* modal is open (unlikely except for reset).
+  // But wait, if we edit here and emit update, parent updates props.
+  // If we watch props and update local, we break the loop if we are not careful.
+  // STRATEGY: Rely on :key re-mount for "Reset".
+  // For initial load, we do it in onMounted (or immediate watch just once).
+  if (localConfigs.value.length === 0) {
+      initLocalConfigs(newConfigs)
+  }
+}, { immediate: true })
+
+function initLocalConfigs(configs: TierConfig[]) {
+  const newLocalConfigs = JSON.parse(JSON.stringify(configs))
   newLocalConfigs.forEach((config: any, index: number) => {
-    const existingConfig = localConfigs.value.find(c => c.id === config.id && c.order === config.order)
-    if (existingConfig && (existingConfig as any)._internalId) {
-      (config as any)._internalId = (existingConfig as any)._internalId
-    } else {
-      (config as any)._internalId = `config-${Date.now()}-${index}`
-    }
-    if (!config.label || config.label !== config.id) {
+    // Preserve _internalId if possible, or generate new
+    // changing logic slightly: just fresh IDs if coming from pros is fine usually,
+    // but to help vue tracking we can try to be stable.
+    // relying on index for now as in original code logic
+    config._internalId = `config-${Date.now()}-${index}`
+    
+    if (!config.label) {
       config.label = config.id
     }
     // 如果没有字号，设置默认值
     if (config.fontSize === undefined || config.fontSize === null) {
       config.fontSize = 32
     }
-    inputValues.value[index] = config.id
   })
   localConfigs.value = newLocalConfigs
-}, { immediate: true })
+}
 
 onMounted(() => {
   const savedToken = loadBgmToken()
@@ -83,23 +102,73 @@ onMounted(() => {
   imageWidth.value = getSize('image-width') as number || 100
   imageAspectRatio.value = getSize('image-aspect-ratio') as number || 0.75
   const savedText = getSize('image-aspect-ratio-text')
-  console.log('[ConfigModal] Loaded aspect ratio text:', savedText)
+  // console.log('[ConfigModal] Loaded aspect ratio text:', savedText)
   imageAspectRatioInput.value = (savedText as unknown as string) || imageAspectRatio.value.toString()
   // 计算当前高度
   imageHeight.value = Math.round(imageWidth.value / imageAspectRatio.value)
 })
 
+// Debounce helper
+function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): T {
+  let timeoutId: number | undefined
+  return function(this: any, ...args: any[]) {
+    if (timeoutId) clearTimeout(timeoutId)
+    timeoutId = window.setTimeout(() => {
+      fn.apply(this, args)
+    }, delay)
+  } as T
+}
+
+// Emits update to parent
+const emitUpdate = () => {
+  // console.log('[ConfigModal] Emitting debounced update')
+  emit('update', JSON.parse(JSON.stringify(localConfigs.value)))
+}
+
+// Debounced version of emitUpdate
+const debouncedEmitUpdate = debounce(emitUpdate, 500)
+
+// Deep watch for localConfigs changes (Tiers)
+watch(localConfigs, () => {
+  debouncedEmitUpdate()
+}, { deep: true })
+
+// Watch for Title Font Size (Immediate/Debounced)
+watch(titleFontSize, (newSize) => {
+  saveTitleFontSize(newSize)
+  emit('update-title-font-size', newSize)
+})
+
 function addTier() {
-  const newId = String.fromCharCode(65 + localConfigs.value.length)
+  // Find the max existing ID number to ensure uniqueness
+  let maxIdNum = -1
+  localConfigs.value.forEach(config => {
+    const match = config.id.match(/^t(\d+)$/)
+    if (match) {
+      const num = parseInt(match[1], 10)
+      if (!isNaN(num) && num > maxIdNum) {
+        maxIdNum = num
+      }
+    }
+  })
+
+  const newIdNum = maxIdNum + 1
+  const newId = `t${newIdNum}`
+  const newLabel = String.fromCharCode(65 + localConfigs.value.length) // A, B, C...
+
+  const isDark = isDarkMode(themePreference.value)
+  const defaultColor = isDark ? '#000000' : '#ffffff'
+
   const newConfig: any = {
     id: newId,
-    label: newId,
-    color: '#000000',
+    label: newLabel,
+    color: defaultColor,
     order: localConfigs.value.length,
     fontSize: 32,
     _internalId: `config-${Date.now()}-${localConfigs.value.length}`,
   }
   localConfigs.value.push(newConfig)
+  // Watcher will trigger save
 }
 
 function removeTier(index: number) {
@@ -108,6 +177,7 @@ function removeTier(index: number) {
     localConfigs.value.forEach((config, i) => {
       config.order = i
     })
+    // Watcher will trigger save
   }
 }
 
@@ -119,40 +189,61 @@ function swapConfigs(index1: number, index2: number) {
     localConfigs.value[index1],
   ]
   
-  // 交换输入值
-  const value1 = inputValues.value[index1] ?? localConfigs.value[index1].id
-  const value2 = inputValues.value[index2] ?? localConfigs.value[index2].id
-  inputValues.value[index1] = value2
-  inputValues.value[index2] = value1
-  
   // 更新 order
   localConfigs.value[index1].order = index1
   localConfigs.value[index2].order = index2
+  // Watcher will trigger save
 }
 
 function moveUp(index: number) {
-  // 当前等级条向上移动：与上一个交换
   if (index > 0) {
     swapConfigs(index - 1, index)
   }
 }
 
 function moveDown(index: number) {
-  // 当前等级条向下移动：与下一个交换
   if (index < localConfigs.value.length - 1) {
     swapConfigs(index, index + 1)
   }
 }
 
+// 现在的 "保存" 按钮其实主要是 "关闭"
+// 但为了保险，我们还是执行一次全量保存
 function handleSave() {
-  emit('update', localConfigs.value)
+  // 触发一次立即保存（绕过 debounce，确保最新状态被保存）
+  emitUpdate()
+  
+  // 其他即时生效的项不需要再手动 emit，因为它们已经 bind 或者 watch 了
+  // 但 Token 和 ExportScale 原逻辑是在 Save 时保存，保持不变？
+  // 用户期望 Immediate Update 吗？
+  // 根据原计划："包括: 等级配置 (增删改)、标题字号、导出倍率、BGM Token。"
+  // 标题字号已改为 Immediate。
+  // 导出倍率、BGM Token 这里还是保留点击 Save 保存吧，或者也可以改成 immediate。
+  // 为了简单起见，这里显式保存一次它们。
+  
   saveBgmToken(bgmToken.value || null)
-  saveTitleFontSize(titleFontSize.value)
-  saveThemePreference(themePreference.value)
   saveExportScale(exportScale.value)
-  emit('update-title-font-size', titleFontSize.value)
-  emit('update-theme', themePreference.value)
   emit('update-export-scale', exportScale.value)
+  
+  emit('close')
+}
+
+// 关闭 (Close)
+function handleClose() {
+  // 即便是 Close，由于我们已经改成 Immediate Update，
+  // 之前的修改都已经生效了。
+  // 所以这里的 Close 仅仅是关闭弹窗。
+  // 唯一的区别是 Token 和 ExportScale 如果没有做 immediate watch，
+  // 那么 Close 时不会保存它们（如果还没点 Save）。
+  // 这符合 "Cancel/Close" 的预期（放弃未提交的更改？），
+  // 但等级配置无法回滚。
+  // 建议 Token 和 ExportScale 也改为 immediate watch 以保持一致性，
+  // 或者在 Close 时不保存它们。
+  // 按照 Setting.md 的描述：
+  // "点击“取消”按钮... 丢弃所有“保存生效”类的修改... 保留所有“立即生效”类的修改"
+  // 现在 Level 和 TitleSize 变成了立即生效。
+  // Token 和 ExportScale 仍然是 "保存生效"。
+  
   emit('close')
 }
 
@@ -223,6 +314,8 @@ function handleExportScaleBlur(event: Event) {
   
   exportScale.value = value
   target.value = value.toString()
+  // Save on blur? Or keep "Save" button dependency?
+  // Let's keep distinct: Export Scale requires Save button per plan discussion implicitness
 }
 
 function handleResetSettings() {
@@ -249,15 +342,6 @@ function handleResetSettings() {
   // Update UI values immediately
 }
 
-function handleClose() {
-  // 关闭设置时，保存当前的主题设置和隐藏作品名设置（确保设置已保存）
-  saveThemePreference(themePreference.value)
-  emit('update-theme', themePreference.value)
-  saveHideItemNames(hideItemNames.value)
-  emit('update-hide-item-names', hideItemNames.value)
-  emit('close')
-}
-
 function isInsideModalContent(x: number, y: number): boolean {
   if (!modalContentRef.value) return false
   const rect = modalContentRef.value.getBoundingClientRect()
@@ -271,21 +355,14 @@ function handleMouseDown(event: MouseEvent) {
 function handleMouseUp(event: MouseEvent) {
   const mouseUpInside = isInsideModalContent(event.clientX, event.clientY)
   if (!mouseDownInside.value && !mouseUpInside) {
-    // 点击空白处退出时，保存当前的主题设置
+    // 点击空白处退出时，保存当前的主题设置和关闭
+    // Note: handleClose will NOT save Token/ExportScale
     handleClose()
   }
   mouseDownInside.value = false
 }
 
-function handleTierIdInput(index: number, value: string) {
-  inputValues.value[index] = value
-}
 
-function handleTierIdBlur(config: TierConfig, index: number) {
-  const newValue = inputValues.value[index] || config.id
-  config.id = newValue
-  config.label = newValue
-}
 
 function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
   let w = imageWidth.value
@@ -363,9 +440,9 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
       
       <div class="modal-body">
       <div class="config-section">
-        <h3 class="section-title">显示设置</h3>
+        <h3 class="section-title">{{ t('config.displaySection') }}</h3>
         <div class="config-item-row">
-          <label for="title-font-size">标题字体大小:</label>
+          <label for="title-font-size">{{ t('config.titleFontSize') }}</label>
           <input
             id="title-font-size"
             v-model.number="titleFontSize"
@@ -378,20 +455,20 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
           />
         </div>
         <div class="config-item-row" style="margin-top: 15px;">
-          <label for="theme-preference">主题模式:</label>
+          <label for="theme-preference">{{ t('config.themeMode') }}</label>
           <select
             id="theme-preference"
             v-model="themePreference"
             @change="handleThemeChange"
             class="config-select"
           >
-            <option value="auto">跟随系统</option>
-            <option value="light">浅色模式</option>
-            <option value="dark">暗色模式</option>
+            <option value="auto">{{ t('config.themeAuto') }}</option>
+            <option value="light">{{ t('config.themeLight') }}</option>
+            <option value="dark">{{ t('config.themeDark') }}</option>
           </select>
         </div>
         <div class="config-item-row" style="margin-top: 15px;">
-          <label for="export-scale">导出分辨率倍率:</label>
+          <label for="export-scale">{{ t('config.exportScale') }}</label>
           <input
             id="export-scale"
             v-model.number="exportScale"
@@ -404,7 +481,7 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             @input="handleExportScaleInput"
             @blur="handleExportScaleBlur"
           />
-          <span style="margin-left: 10px; color: var(--text-secondary);">倍 (推荐: 4倍，范围: 1-6)</span>
+          <span style="margin-left: 10px; color: var(--text-secondary);">{{ t('config.exportScaleHint') }}</span>
         </div>
         <div class="config-item-row" style="margin-top: 15px;">
           <label for="hide-item-names" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
@@ -415,7 +492,7 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
               class="config-checkbox"
               @change="handleHideItemNamesChange"
             />
-            <span>隐藏作品名</span>
+            <span>{{ t('config.hideItemNames') }}</span>
           </label>
         </div>
         
@@ -428,28 +505,28 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
               class="config-checkbox"
               @change="handleCompactModeChange"
             />
-            <span>紧凑模式 (无间距)</span>
+            <span>{{ t('config.compactMode') }}</span>
           </label>
         </div>
         
         <div class="config-item-row" style="margin-top: 15px;">
-          <label for="tall-image-crop-mode">长图裁剪模式:</label>
+          <label for="tall-image-crop-mode">{{ t('config.tallImageCrop') }}</label>
           <select
             id="tall-image-crop-mode"
             v-model="tallImageCropMode"
             @change="handleTallImageCropModeChange"
             class="config-select"
           >
-            <option value="center-top">顶部对齐 (显示头部)</option>
-            <option value="center-center">居中对齐</option>
+            <option value="center-top">{{ t('config.tallImageCropTop') }}</option>
+            <option value="center-center">{{ t('config.tallImageCropCenter') }}</option>
           </select>
         </div>
       </div>
       
       <div class="config-section">
-        <h3 class="section-title">卡片尺寸设置</h3>
+        <h3 class="section-title">{{ t('config.cardSizeSection') }}</h3>
         <div class="config-item-row">
-          <label for="image-aspect-ratio">宽高比 (Width/Height):</label>
+          <label for="image-aspect-ratio">{{ t('config.aspectRatio') }}</label>
           <input
             id="image-aspect-ratio"
             v-model="imageAspectRatioInput"
@@ -458,11 +535,11 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             style="max-width: 100px;"
             @change="handleImageUtilChange('ratio')"
           />
-          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">(3:4; 1, 16/9, ...)</span>
+          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">{{ t('config.aspectRatioHint') }}</span>
         </div>
         
         <div class="config-item-row" style="margin-top: 10px;">
-          <label for="image-width">图片宽度 (px):</label>
+          <label for="image-width">{{ t('config.imageWidth') }}</label>
           <input
             id="image-width"
             v-model.number="imageWidth"
@@ -476,7 +553,7 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
         </div>
         
         <div class="config-item-row" style="margin-top: 10px;">
-          <label for="image-height">图片高度 (px):</label>
+          <label for="image-height">{{ t('config.imageHeight') }}</label>
           <input
             id="image-height"
             v-model.number="imageHeight"
@@ -487,40 +564,40 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             style="max-width: 100px;"
             @input="handleImageUtilChange('height')"
           />
-          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">(根据宽高比自动匹配)</span>
+          <span style="font-size: 12px; color: var(--text-secondary); margin-left: 5px;">{{ t('config.imageHeightHint') }}</span>
         </div>
       </div>
       
       <div class="config-section">
-        <h3 class="section-title">Bangumi Access Token（可选）</h3>
+        <h3 class="section-title">{{ t('config.bgmTokenSection') }}</h3>
         <div class="token-config">
           <div class="token-input-group">
             <input
               v-model="bgmToken"
               type="text"
               class="token-input"
-              placeholder="留空则使用默认 Token"
+              :placeholder="t('config.bgmTokenPlaceholder')"
             />
             <button
               class="token-clear-btn"
               @click="bgmToken = ''"
               :disabled="!bgmToken"
             >
-              清除
+              {{ t('config.bgmTokenClear') }}
             </button>
           </div>
           <p class="token-hint">
-            💡 提示：留空将使用默认 Token。设置自定义 Token 后，将优先使用您的 Token。
+            {{ t('config.bgmTokenHint') }}
             <br />
-            获取 Token：<a href="https://next.bgm.tv/demo/access-token" target="_blank">https://next.bgm.tv/demo/access-token</a>
+            {{ t('config.bgmTokenLink') }}<a href="https://next.bgm.tv/demo/access-token" target="_blank">https://next.bgm.tv/demo/access-token</a>
           </p>
         </div>
       </div>
       
       <div class="config-section config-section-tiers">
-        <h3 class="section-title">评分等级配置</h3>
+        <h3 class="section-title">{{ t('config.tierConfigSection') }}</h3>
         
-        <div class="config-list">
+        <TransitionGroup name="tier-list" tag="div" class="config-list">
           <div
             v-for="(config, index) in localConfigs"
             :key="(config as any)._internalId || `config-${index}`"
@@ -544,18 +621,16 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
           </div>
           
           <input
-            :value="inputValues[index] ?? config.id"
+            v-model="config.label"
             type="text"
             class="config-input"
-            placeholder="等级（如 S、SS、A、EX）"
-            @input="(e) => handleTierIdInput(index, (e.target as HTMLInputElement).value)"
-            @blur="handleTierIdBlur(config, index)"
+            :placeholder="t('config.tierPlaceholder')"
           />
           <input
             v-model.number="config.fontSize"
             type="number"
             class="config-fontsize"
-            placeholder="字号"
+            :placeholder="t('config.fontSizePlaceholder')"
             min="12"
             max="72"
             step="1"
@@ -584,22 +659,22 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             @click="removeTier(index)"
             :disabled="localConfigs.length <= 1"
           >
-            删除
+            {{ t('config.delete') }}
           </button>
           </div>
-        </div>
+        </TransitionGroup>
         
       </div>
       </div>
       
-      <div class="modal-footer">
+        <div class="modal-footer">
         <div class="footer-left">
-          <button class="btn btn-reset" @click="handleResetSettings">重置设置</button>
-          <button class="add-btn" @click="addTier">添加等级</button>
+          <button class="btn btn-reset" @click="handleResetSettings">{{ t('config.resetSettings') }}</button>
+          <button class="add-btn" @click="addTier">{{ t('config.addTier') }}</button>
         </div>
         <div class="footer-actions">
-          <button class="btn btn-cancel" @click="handleClose">取消</button>
-          <button class="btn btn-save" @click="handleSave">保存</button>
+          <button class="btn btn-cancel" @click="handleClose">{{ t('config.close') }}</button>
+          <button class="btn btn-save" @click="handleSave">{{ t('config.save') }}</button>
         </div>
       </div>
     </div>
@@ -607,6 +682,26 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
 </template>
 
 <style scoped>
+/* 
+  Transition Styles using Vue's FLIP animations 
+*/
+.tier-list-move,
+.tier-list-enter-active,
+.tier-list-leave-active {
+  transition: all 0.5s ease;
+}
+
+.tier-list-enter-from,
+.tier-list-leave-to {
+  opacity: 0;
+  transform: translateX(30px);
+}
+
+/* ensure leaving items are taken out of layout flow so others can move smoothly */
+.tier-list-leave-active {
+  position: absolute;
+}
+
 .modal-overlay {
   position: fixed;
   top: 0;

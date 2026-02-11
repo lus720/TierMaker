@@ -2,7 +2,11 @@
 import { ref, onMounted, watch, nextTick } from 'vue'
 import TierRow from './TierRow.vue'
 import { getSize } from '../utils/configManager'
+import { getContrastColor } from '../utils/colors'
 import type { Tier, TierConfig, AnimeItem } from '../types'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   tiers: Tier[]
@@ -146,12 +150,16 @@ watch(
           class="tier-label"
           :style="{ 
             backgroundColor: getTierConfig(tier.id)?.color || '#000000',
+            color: getContrastColor(getTierConfig(tier.id)?.color || '#000000'),
             width: maxLabelWidth > 0 ? `${maxLabelWidth}px` : 'auto'
           }"
         >
           <span 
             class="tier-label-text"
-            :style="{ fontSize: `${getTierConfig(tier.id)?.fontSize || getSize('label-font-size') || 32}px` }"
+            :style="{ 
+              fontSize: `${getTierConfig(tier.id)?.fontSize || getSize('label-font-size') || 32}px`,
+              color: 'inherit'
+            }"
           >{{ getTierConfig(tier.id)?.label || tier.id }}</span>
         </div>
         
@@ -200,7 +208,7 @@ watch(
           v-if="tier.rows.length > 1"
           class="delete-row-btn"
           @click="emit('delete-row', tier.id, row.id)"
-          title="删除此行"
+          :title="t('tierList.deleteRow')"
         >
           ×
         </button>
@@ -294,4 +302,3 @@ watch(
   color: var(--bg-color);
 }
 </style>
-

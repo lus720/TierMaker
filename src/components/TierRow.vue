@@ -6,6 +6,9 @@ import { getSize, getConfig, getSetting } from '../utils/configManager'
 import { generateUuid } from '../utils/storage'
 import { adaptCropToRatio, normalizeCropResolution } from '../utils/cropUtils'
 import type { TierRow, AnimeItem } from '../types'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 // ... (props definition remains same)
 
@@ -358,14 +361,14 @@ function processFile(file: File): Promise<AnimeItem | null> {
   return new Promise((resolve) => {
     // 检查文件类型
     if (!file.type.startsWith('image/')) {
-      console.error('请上传图片文件')
+      console.error(t('tierRow.uploadImageRequired'))
       resolve(null)
       return
     }
     
     // 检查文件大小（限制为 10MB）
     if (file.size > 10 * 1024 * 1024) {
-      console.error('图片大小不能超过 10MB')
+      console.error(t('tierRow.imageTooLarge'))
       resolve(null)
       return
     }
@@ -382,7 +385,7 @@ function processFile(file: File): Promise<AnimeItem | null> {
     const anime: AnimeItem = {
       id: itemId,
       uuid: generateUuid(),
-      name: fileName || '未命名作品',
+      name: fileName || t('tierRow.untitledItem'),
       image: blobUrl,
       originalImage: blobUrl,
       _blob: file, // 关键：保存 Blob 对象以便持久化
@@ -486,7 +489,7 @@ async function handleFileDrop(event: DragEvent) {
           @contextmenu.prevent="handleRightClick(item)"
           @error="handleImageError"
           @load="handleImageLoad"
-          :title="getItemUrl(item) ? '双击或 Ctrl+点击或右键点击跳转到详情页' : ''"
+          :title="getItemUrl(item) ? t('tierRow.openLinkHint') : ''"
           :style="getImageStyle(item)"
         />
         <!-- 长按加载条 (圆形) - 移到图片容器内 -->
@@ -516,7 +519,7 @@ async function handleFileDrop(event: DragEvent) {
         v-if="item.id"
         class="delete-btn"
         @click="handleItemDelete(index, $event)"
-        title="删除"
+        :title="t('tierRow.delete')"
       >
         ×
       </button>

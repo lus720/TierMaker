@@ -1,3 +1,4 @@
+import { i18n } from '../i18n'
 /**
  * Bangumi List API 工具模块
  * 用于从 bangumi-list-v3 API 获取季度动漫数据
@@ -60,7 +61,7 @@ export async function fetchSeasons(startSeason?: string): Promise<string[]> {
 
     if (!response.ok) {
         console.error('[BangumiList] Response not ok, throwing error')
-        throw new Error(`获取季度列表失败: ${response.status} ${response.statusText}`)
+        throw new Error(i18n.global.t('bangumi.fetchSeasonsFailed', { status: response.status, text: response.statusText }))
     }
 
     console.log('[BangumiList] Getting response text...')
@@ -125,7 +126,7 @@ async function fetchWithFallback(targetUrl: string): Promise<any> {
 
             if (!response.ok) {
                 console.warn(`[BangumiList] Proxy returned status ${response.status}`)
-                throw new Error(`HTTP ${response.status}`)
+                throw new Error(i18n.global.t('bangumi.httpError', { status: response.status }))
             }
 
             const text = await response.text()
@@ -134,7 +135,7 @@ async function fetchWithFallback(targetUrl: string): Promise<any> {
                 return data
             } catch (jsonError) {
                 console.warn('[BangumiList] JSON parse failed', jsonError)
-                throw new Error('Invalid JSON response')
+                throw new Error(i18n.global.t('bangumi.invalidJson'))
             }
         } catch (e) {
             console.warn('[BangumiList] Proxy attempt failed:', e)
@@ -142,7 +143,7 @@ async function fetchWithFallback(targetUrl: string): Promise<any> {
         }
     }
 
-    throw lastError || new Error('All proxies failed')
+    throw lastError || new Error(i18n.global.t('bangumi.allProxiesFailed'))
 }
 
 /**
@@ -161,7 +162,7 @@ export async function fetchSeasonAnime(season: string): Promise<BangumiListItem[
         data = await fetchWithFallback(url)
     } catch (e: any) {
         console.error('[BangumiList] All fetch attempts failed:', e)
-        throw new Error(`获取季度动漫失败: ${e.message}`)
+        throw new Error(i18n.global.t('bangumi.fetchAnimeFailed', { msg: e.message }))
     }
 
     console.log('[BangumiList] content fetched, processing data...')
@@ -211,13 +212,13 @@ export function formatSeasonName(season: string): string {
     console.log('[BangumiList] year:', year, 'quarter:', quarter)
 
     const monthMap: Record<number, string> = {
-        1: '1月',
-        2: '4月',
-        3: '7月',
-        4: '10月'
+        1: i18n.global.t('bangumi.month1'),
+        2: i18n.global.t('bangumi.month4'),
+        3: i18n.global.t('bangumi.month7'),
+        4: i18n.global.t('bangumi.month10')
     }
 
-    const result = `${year}年${monthMap[quarter] || ''}`
+    const result = `${year}${i18n.global.t('bangumi.yearSuffix')}${monthMap[quarter] || ''}`
     console.log('[BangumiList] Formatted result:', result)
 
     return result
