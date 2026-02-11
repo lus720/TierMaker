@@ -944,7 +944,7 @@ function handleFileImport(e: Event) {
         :title="t('app.editTitle')"
       ></h1>
       <div class="header-actions">
-        <button class="btn btn-secondary" @click="toggleLanguage" :title="t('settings.language')">
+        <button class="btn btn-secondary" @click="toggleLanguage" :title="t('config.language')">
            {{ locale === 'zh' ? 'English' : '中文' }}
         </button>
         <button 
