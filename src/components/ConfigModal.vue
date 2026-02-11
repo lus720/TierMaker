@@ -50,7 +50,6 @@ const presetColors = [
 ]
 
 watch(() => props.configs, (newConfigs) => {
-  console.log('[ConfigModal] watch props.configs:', JSON.parse(JSON.stringify(newConfigs)))
   const newLocalConfigs = JSON.parse(JSON.stringify(newConfigs))
   newLocalConfigs.forEach((config: any, index: number) => {
     const existingConfig = localConfigs.value.find(c => c.id === config.id && c.order === config.order)
