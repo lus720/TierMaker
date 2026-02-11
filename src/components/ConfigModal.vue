@@ -66,6 +66,7 @@ watch(() => props.configs, (newConfigs) => {
       config.fontSize = 32
     }
     inputValues.value[index] = config.label || '' // Initialize with Label, not ID (unless ID==Label in legacy)
+  })
   localConfigs.value = newLocalConfigs
 }, { immediate: true })
 
