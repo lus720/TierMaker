@@ -24,6 +24,8 @@ export interface AnimeItem {
   naturalHeight?: number
   _blob?: Blob // Runtime only: cache for original blob data
   uuid?: string // Unique instance ID for Vue keys
+  comment?: string       // 富文本 HTML 评论内容（详情视图右侧）
+  leftContent?: string   // 左侧富文本内容（详情视图图片下方）
 }
 
 // 评分等级配置
@@ -106,3 +108,5 @@ export type SearchResult = BgmSearchResult | VndbSearchResult | BgmCharacterSear
 // API 源类型
 export type ApiSource = 'bangumi' | 'character' | 'local'
 
+// 视图模式
+export type ViewMode = 'card' | 'detail'

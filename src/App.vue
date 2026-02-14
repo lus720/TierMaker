@@ -7,13 +7,14 @@ import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
 import ImportModal from './components/ImportModal.vue'
 import ExportModal from './components/ExportModal.vue'
+import DetailTierList from './components/DetailTierList.vue'
 import { useI18n } from 'vue-i18n'
 
 const { t, locale } = useI18n()
 
 import { initConfigStyles, getSetting } from './utils/configManager'
-import type { Tier, AnimeItem, TierConfig } from './types'
-import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadThemePreference, saveThemePreference, saveTitle, loadTitle, saveTitleFontSize, loadTitleFontSize, clearItemsAndTitle, importAllData, type ExportData, DEFAULT_TIER_CONFIGS, getDefaultTiers, generateUuid, handleLanguageChange, resetSettings, loadHideItemNames, loadExportScale } from './utils/storage'
+import type { Tier, AnimeItem, TierConfig, ViewMode } from './types'
+import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadThemePreference, saveThemePreference, saveTitle, loadTitle, saveTitleFontSize, loadTitleFontSize, clearItemsAndTitle, importAllData, type ExportData, DEFAULT_TIER_CONFIGS, getDefaultTiers, generateUuid, handleLanguageChange, resetSettings, loadHideItemNames, loadExportScale, saveExportScale, loadViewMode, saveViewMode, loadDetailExportScale, saveDetailExportScale } from './utils/storage'
 
 const tiers = ref<Tier[]>([])
 const unrankedTiers = ref<Tier[]>([{
@@ -37,7 +38,9 @@ const title = ref<string>('Tier List')
 const titleFontSize = ref<number>(32)
 const hideItemNames = ref<boolean>(false)
 const exportScale = ref<number>(4)
+const detailExportScale = ref<number>(1) // Detail view export scale
 const isDragging = ref(false) // 全局拖动状态
+const viewMode = ref<ViewMode>(loadViewMode())
 const tierListRef = ref<InstanceType<typeof TierList> | null>(null)
 const configModalKey = ref<number>(0) // 用于强制重新渲染 ConfigModal
 
@@ -135,6 +138,7 @@ onMounted(async () => {
   titleFontSize.value = loadTitleFontSize()
   hideItemNames.value = loadHideItemNames()
   exportScale.value = loadExportScale()
+  detailExportScale.value = loadDetailExportScale()
   tierConfigs.value = loadTierConfigs()
   
   // Async load
@@ -367,7 +371,37 @@ function handleDeleteItem(tierId: string, rowId: string, index: number) {
   }
 }
 
+// 视图模式切换
+function toggleViewMode() {
+  viewMode.value = viewMode.value === 'card' ? 'detail' : 'card'
+  saveViewMode(viewMode.value)
+}
 
+// 详情视图 - 更新评论
+function handleDetailUpdateComment(tierId: string, rowId: string, index: number, comment: string) {
+  const allTiers = [...tiers.value, ...unrankedTiers.value]
+  const tier = allTiers.find(t => t.id === tierId)
+  if (tier) {
+    const row = tier.rows.find(r => r.id === rowId)
+    if (row && row.items[index]) {
+      row.items[index].comment = comment
+    }
+  }
+}
+
+// 详情视图 - 更新左侧内容
+function handleDetailUpdateLeftContent(tierId: string, rowId: string, index: number, leftContent: string) {
+  const allTiers = [...tiers.value, ...unrankedTiers.value]
+  const tier = allTiers.find(t => t.id === tierId)
+  if (tier) {
+    const row = tier.rows.find(r => r.id === rowId)
+    if (row && row.items[index]) {
+      row.items[index].leftContent = leftContent
+    }
+  }
+}
+
+// 详情视图 - 删除条目（复用 handleDeleteItem）
 
 
 
@@ -551,7 +585,13 @@ function handleUpdateHideItemNames(hide: boolean) {
 }
 
 function handleUpdateExportScale(scale: number) {
-  exportScale.value = scale
+  if (viewMode.value === 'detail') {
+    detailExportScale.value = scale
+    saveDetailExportScale(scale)
+  } else {
+    exportScale.value = scale
+    saveExportScale(scale)
+  }
 }
 
 async function handleClearAll() {
@@ -903,6 +943,13 @@ function handleFileImport(e: Event) {
         :title="t('app.editTitle')"
       ></h1>
       <div class="header-actions">
+        <button
+          class="btn btn-secondary view-toggle-btn"
+          @click="toggleViewMode"
+          :title="viewMode === 'card' ? t('detailView.detailView') : t('detailView.cardView')"
+        >
+          {{ viewMode === 'card' ? '📋' : '🃏' }}
+        </button>
         <button class="btn btn-secondary" @click="toggleLanguage" :title="t('config.language')">
            {{ locale === 'zh' ? 'English' : '中文' }}
         </button>
@@ -932,45 +979,73 @@ function handleFileImport(e: Event) {
       </div>
     </header>
 
-    <TierList
-      ref="tierListRef"
-      :tiers="tiers"
-      :tier-configs="tierConfigs"
-      :is-dragging="isDragging"
-      :is-exporting-image="false"
-      :duplicate-item-ids="duplicateItemIds"
-      :hide-item-names="hideItemNames"
-      @add-item="handleAddItem"
-      @add-row="handleAddRow"
-      @delete-row="handleDeleteRow"
-      @delete-item="handleDeleteItem"
-      @edit-item="handleEditItem"
-      @move-item="handleMoveItem"
-      @reorder="handleReorder"
-      @drag-start="isDragging = true"
-      @drag-end="isDragging = false"
-    />
+    <!-- 卡片视图 -->
+    <template v-if="viewMode === 'card'">
+      <TierList
+        ref="tierListRef"
+        :tiers="tiers"
+        :tier-configs="tierConfigs"
+        :is-dragging="isDragging"
+        :is-exporting-image="false"
+        :duplicate-item-ids="duplicateItemIds"
+        :hide-item-names="hideItemNames"
+        @add-item="handleAddItem"
+        @add-row="handleAddRow"
+        @delete-row="handleDeleteRow"
+        @delete-item="handleDeleteItem"
+        @edit-item="handleEditItem"
+        @move-item="handleMoveItem"
+        @reorder="handleReorder"
+        @drag-start="isDragging = true"
+        @drag-end="isDragging = false"
+      />
 
-    <div class="divider"></div>
+      <div class="divider"></div>
 
-    <TierList
-      :tiers="unrankedTiers"
-      :tier-configs="[{ id: 'unranked', label: '', color: 'transparent', order: 9999 }]"
-      :is-dragging="isDragging"
-      :is-exporting-image="false"
-      :duplicate-item-ids="duplicateItemIds"
-      :hide-item-names="hideItemNames"
-      :hide-tier-labels="true"
-      @add-item="handleAddItem"
-      @add-row="handleAddRow"
-      @delete-row="handleDeleteRow"
-      @delete-item="handleDeleteItem"
-      @edit-item="handleEditItem"
-      @move-item="handleMoveItem"
-      @reorder="handleReorder"
-      @drag-start="isDragging = true"
-      @drag-end="isDragging = false"
-    />
+      <TierList
+        :tiers="unrankedTiers"
+        :tier-configs="[{ id: 'unranked', label: '', color: 'transparent', order: 9999 }]"
+        :is-dragging="isDragging"
+        :is-exporting-image="false"
+        :duplicate-item-ids="duplicateItemIds"
+        :hide-item-names="hideItemNames"
+        :hide-tier-labels="true"
+        @add-item="handleAddItem"
+        @add-row="handleAddRow"
+        @delete-row="handleDeleteRow"
+        @delete-item="handleDeleteItem"
+        @edit-item="handleEditItem"
+        @move-item="handleMoveItem"
+        @reorder="handleReorder"
+        @drag-start="isDragging = true"
+        @drag-end="isDragging = false"
+      />
+    </template>
+
+    <!-- 详情视图 -->
+    <template v-else>
+      <DetailTierList
+        :tiers="tiers"
+        :tier-configs="tierConfigs"
+        @update-comment="handleDetailUpdateComment"
+        @update-left-content="handleDetailUpdateLeftContent"
+        @delete-item="handleDeleteItem"
+        @edit-item="handleEditItem"
+      />
+
+      <div class="divider"></div>
+
+      <DetailTierList
+        :tiers="unrankedTiers"
+        :tier-configs="[{ id: 'unranked', label: '', color: 'transparent', order: 9999 }]"
+        :hide-tier-labels="true"
+        @update-comment="handleDetailUpdateComment"
+        @update-left-content="handleDetailUpdateLeftContent"
+        @delete-item="handleDeleteItem"
+        @edit-item="handleEditItem"
+      />
+
+    </template>
 
 
 
@@ -985,6 +1060,7 @@ function handleFileImport(e: Event) {
       v-if="showConfig"
       :key="configModalKey"
       :configs="tierConfigs"
+      :initial-export-scale="viewMode === 'detail' ? detailExportScale : exportScale"
       @close="showConfig = false"
       @update="handleUpdateConfigs"
       @update-title-font-size="handleUpdateTitleFontSize"
@@ -1039,7 +1115,8 @@ function handleFileImport(e: Event) {
       :app-content-ref="appContentRef"
       :title="title"
       :title-font-size="titleFontSize"
-      :export-scale="exportScale"
+      :export-scale="viewMode === 'detail' ? detailExportScale : exportScale"
+      :view-mode="viewMode"
       @close="showExportModal = false"
     />
   </div>

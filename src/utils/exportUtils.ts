@@ -16,9 +16,9 @@ export async function processExportImages(
     getCorsProxyUrlFn: (url: string) => string,
     applySmartCropFn: (img: HTMLImageElement) => void,
     exportType: 'image' | 'pdf' = 'image',
-    options?: { excludeCandidates?: boolean }
+    options?: { excludeCandidates?: boolean, widthKey?: string, heightKey?: string }
 ): Promise<void> {
-    const { excludeCandidates = true } = options || {}
+    const { excludeCandidates = true, widthKey = 'image-width', heightKey = 'image-height' } = options || {}
 
     const allImages = root.querySelectorAll('img') as NodeListOf<HTMLImageElement>
     const imageProcessPromises: Promise<void>[] = []
@@ -53,10 +53,12 @@ export async function processExportImages(
             if (currentSrc.startsWith('data:')) {
                 img.src = currentSrc
                 // Use configured sizes
-                const width = getSize('image-width') || 100
-                const height = getSize('image-height') || 133
-                img.style.width = `${width}px`
-                img.style.height = `${height}px`
+                img.src = currentSrc
+                // Use configured sizes
+                const width = getSize(widthKey) || 100
+                const height = getSize(heightKey) || 133
+                img.style.width = width === 'auto' ? 'auto' : `${width}px`
+                img.style.height = height === 'auto' ? 'auto' : `${height}px`
                 img.style.objectFit = 'none'
                 resolve()
                 return
@@ -108,13 +110,13 @@ export async function processExportImages(
 
                     // 图片已加载，进行裁剪
                     cropImageFn(img, scale).then((croppedBase64) => {
-                        const width = getSize('image-width') || 100
-                        const height = getSize('image-height') || 133
+                        const width = getSize(widthKey) || 100
+                        const height = getSize(heightKey) || 133
 
                         if (croppedBase64) {
                             img.src = croppedBase64
-                            img.style.width = `${width}px`
-                            img.style.height = `${height}px`
+                            img.style.width = width === 'auto' ? 'auto' : `${width}px`
+                            img.style.height = height === 'auto' ? 'auto' : `${height}px`
                             img.style.objectFit = 'none'
                         } else {
                             console.warn(`⚠️ 导出${exportType === 'pdf' ? ' PDF' : '图片'}时裁剪失败，使用 CSS 方式:`, { itemId })

@@ -10,7 +10,12 @@ sizes:
   image-width: 100
   image-height: 133
   image-aspect-ratio: 0.75 # 3:4 比例，用于裁剪逻辑
-  
+  detail-image-width: 320 # 详情视图左侧图片宽度
+  detail-image-height: auto # 详情视图左侧图片高度 (auto or number)
+  detail-image-aspect-ratio: 0.75 # 详情视图宽高比 (auto or number, e.g. 0.75)
+  detail-title-font-size: 32 # 详情视图标题字号 (px)
+  detail-text-font-size: 24 # 详情视图文本框字号 (px)
+
   # ==================== 条目卡片 ====================
   item-name-height: 40
   
@@ -70,6 +75,7 @@ settings:
   title-font-size: 32
   theme: 'auto'          # light, dark, auto
   export-scale: 4        # 1-6
+  detail-export-scale: 1 # 1-6 (详情视图导出倍率)
   hide-item-names: true  
   compact-mode: true     # 紧凑模式（无间距）
   tall-image-crop-mode: 'center-top'  # 长图裁剪模式：center-top（顶部对齐）或 center-center（居中）

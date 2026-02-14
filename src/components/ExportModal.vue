@@ -7,7 +7,7 @@ import { processExportImages, processEmptySlots, configureExportStyles, hideExpo
 import { getSize } from '../utils/configManager'
 import { adaptCropToRatio, normalizeCropResolution } from '../utils/cropUtils'
 import { exportAllData } from '../utils/storage'
-import type { Tier, TierConfig, AnimeItem, CropPosition } from '../types'
+import type { Tier, TierConfig, AnimeItem, CropPosition, ViewMode } from '../types'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -19,6 +19,7 @@ const props = defineProps<{
   title: string
   titleFontSize: number
   exportScale: number
+  viewMode?: ViewMode
 }>()
 
 const emit = defineEmits<{
@@ -75,6 +76,8 @@ function getCorsProxyUrl(url: string): string {
 function applySmartCropToImage(img: HTMLImageElement) {
   if (img.naturalWidth && img.naturalHeight) {
     const itemId = img.getAttribute('data-item-id')
+    if (!itemId) return // Skip non-tier items (e.g. rich text images, detail view main image)
+
     let cropPosition: CropPosition = 'auto'
     
     if (itemId) {
@@ -94,14 +97,31 @@ function applySmartCropToImage(img: HTMLImageElement) {
     
     const ratio = img.naturalWidth / img.naturalHeight
     
-    const width = Number(getSize('image-width')) || 100
-    const height = Number(getSize('image-height')) || 133
-    // Calculate target ratio dynamically from config, fallback to 0.75 if something is wrong (shouldn't happen)
-    const targetRatio = (width && height) ? (width / height) : 0.75
+    const widthKey = props.viewMode === 'detail' ? 'detail-image-width' : 'image-width'
+    const heightKey = props.viewMode === 'detail' ? 'detail-image-height' : 'image-height'
+
+    const wVal = getSize(widthKey)
+    const hVal = getSize(heightKey)
+
+    const widthStr = wVal === 'auto' ? 'auto' : (Number(wVal) || (props.viewMode === 'detail' ? 320 : 100))
+    const heightStr = hVal === 'auto' ? 'auto' : (Number(hVal) || (props.viewMode === 'detail' ? 0 : 133)) // 0 means fallback/auto logic needed? No, if 0 and not auto, it implies auto behavior in CSS?
+    
+    // If height is 0 (from invalid number and not auto), force auto?
+    // In DetailView default is auto. Cart default is 133.
+    // If props.viewMode === 'detail' and hVal is undefined, default is 0.
+    // We want 'auto'.
+    
+    let finalW = widthStr
+    let finalH = heightStr
+    
+    if (finalH === 0) finalH = 'auto'
+
+    // Calculate target ratio. If height is auto, use natural ratio (no cropping).
+    const targetRatio = (typeof finalW === 'number' && typeof finalH === 'number') ? (finalW / finalH) : ratio
 
     img.style.objectFit = 'cover'
-    img.style.width = `${width}px`
-    img.style.height = `${height}px`
+    img.style.width = typeof finalW === 'number' ? `${finalW}px` : finalW
+    img.style.height = typeof finalH === 'number' ? `${finalH}px` : finalH
     img.style.position = 'static'
     img.style.left = 'auto'
     img.style.top = 'auto'
@@ -128,6 +148,8 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   }
   
   const itemId = img.getAttribute('data-item-id')
+  if (!itemId) return null // Skip non-tier items
+
   let cropPosition: CropPosition = 'auto'
   
   if (itemId) {
@@ -149,8 +171,34 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   const naturalHeight = img.naturalHeight
   const naturalAspectRatio = naturalWidth / naturalHeight
   
-  const containerWidth = (Number(getSize('image-width')) || 100) * scale
-  const containerHeight = (Number(getSize('image-height')) || 133) * scale
+  const widthKey = props.viewMode === 'detail' ? 'detail-image-width' : 'image-width'
+  const heightKey = props.viewMode === 'detail' ? 'detail-image-height' : 'image-height'
+  
+  const wConfig = getSize(widthKey)
+  const hConfig = getSize(heightKey)
+  
+  // For canvas cropping, we usually need fixed dimensions.
+  // If height is 'auto' (Detail View), canvas cropping is tricky because we don't know the rigid container size.
+  // BUT detail view items usually just retain their aspect ratio (width fixed, height auto).
+  // If height is auto, we can calculate expected height based on natural aspect ratio and fixed width.
+  // Or based on detail-image-aspect-ratio config.
+  
+  const arConfig = props.viewMode === 'detail' ? getSize('detail-image-aspect-ratio') : getSize('image-aspect-ratio')
+  
+  const baseWidth = (Number(wConfig) || (props.viewMode === 'detail' ? 320 : 100))
+  let baseHeight = (Number(hConfig) || (props.viewMode === 'detail' ? 0 : 133))
+  
+  if (baseHeight === 0) {
+      // Auto height
+     if (arConfig && arConfig !== 'auto') {
+         baseHeight = baseWidth / Number(arConfig)
+     } else {
+         baseHeight = baseWidth / naturalAspectRatio
+     }
+  }
+
+  const containerWidth = baseWidth * scale
+  const containerHeight = baseHeight * scale
   const targetAspectRatio = containerWidth / containerHeight
   
   const canvas = document.createElement('canvas')
@@ -294,7 +342,15 @@ async function handleExportImage() {
     processEmptySlots(hiddenContainer)
     
     exportProgress.value = t('export.processingImages')
-    await processExportImages(hiddenContainer, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'image')
+    
+    // Pass widthKey/heightKey to processExportImages
+    const widthKey = props.viewMode === 'detail' ? 'detail-image-width' : 'image-width'
+    const heightKey = props.viewMode === 'detail' ? 'detail-image-height' : 'image-height'
+    
+    await processExportImages(hiddenContainer, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'image', {
+        widthKey,
+        heightKey
+    })
     
     const originalAppWidth = originalNode.offsetWidth || originalNode.scrollWidth
     let computedTitleFontSize = 32
@@ -440,7 +496,14 @@ async function handleExportPDF() {
     processEmptySlots(hiddenContainer)
     
     exportProgress.value = t('export.processingImages')
-    await processExportImages(hiddenContainer, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'pdf')
+    
+    const widthKey = props.viewMode === 'detail' ? 'detail-image-width' : 'image-width'
+    const heightKey = props.viewMode === 'detail' ? 'detail-image-height' : 'image-height'
+
+    await processExportImages(hiddenContainer, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'pdf', {
+        widthKey,
+        heightKey
+    })
     
     const originalAppWidth = originalNode.offsetWidth || originalNode.scrollWidth
     configureExportStyles(hiddenContainer, { titleFontSize: props.titleFontSize, originalAppWidth })

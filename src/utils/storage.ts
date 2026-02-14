@@ -1,4 +1,4 @@
-import type { Tier, TierConfig, AnimeItem } from '../types'
+import type { Tier, TierConfig, AnimeItem, ViewMode } from '../types'
 import db from './db'
 import { toRaw } from 'vue'
 import { getDefaultTiers as _getDefaultTiers, getSetting } from './configManager'
@@ -13,6 +13,8 @@ const LAST_SEARCH_SOURCE_KEY = 'last-search-source'
 const THEME_KEY = 'theme-preference'
 const HIDE_ITEM_NAMES_KEY = 'hide-item-names'
 const EXPORT_SCALE_KEY = 'export-scale'
+const VIEW_MODE_KEY = 'view-mode'
+const DETAIL_EXPORT_SCALE_KEY = 'detail-export-scale'
 
 /**
  * 默认评分等级配置
@@ -516,6 +518,50 @@ export function loadExportScale(): number {
     console.error('加载导出倍率设置失败:', error)
   }
   return getSetting('export-scale') || 4
+}
+
+export function saveViewMode(mode: ViewMode): void {
+  try {
+    localStorage.setItem(VIEW_MODE_KEY, mode)
+  } catch (error) {
+    console.error('保存视图模式失败:', error)
+  }
+}
+
+export function loadViewMode(): ViewMode {
+  try {
+    const saved = localStorage.getItem(VIEW_MODE_KEY)
+    if (saved === 'card' || saved === 'detail') {
+      return saved
+    }
+  } catch (error) {
+    console.error('加载视图模式失败:', error)
+  }
+  return 'card'
+}
+
+export function saveDetailExportScale(scale: number): void {
+  try {
+    const validScale = Math.max(1, Math.min(6, Math.round(scale)))
+    localStorage.setItem(DETAIL_EXPORT_SCALE_KEY, validScale.toString())
+  } catch (error) {
+    console.error('保存详情视图导出倍率失败:', error)
+  }
+}
+
+export function loadDetailExportScale(): number {
+  try {
+    const saved = localStorage.getItem(DETAIL_EXPORT_SCALE_KEY)
+    if (saved) {
+      const parsed = parseInt(saved, 10)
+      if (!isNaN(parsed) && parsed >= 1 && parsed <= 6) {
+        return parsed
+      }
+    }
+  } catch (error) {
+    console.error('加载详情视图导出倍率失败:', error)
+  }
+  return 2  // 详情视图默认2倍（比卡片视图低，因为内容更多）
 }
 
 /**

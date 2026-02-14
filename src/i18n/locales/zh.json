@@ -211,6 +211,15 @@
     "tierList": {
         "deleteRow": "删除此行"
     },
+    "detailView": {
+        "comment": "评论",
+        "commentPlaceholder": "写下你的评价...",
+        "leftContentPlaceholder": "添加备注...",
+        "openLink": "查看链接",
+        "empty": "暂无作品，请在卡片视图中添加",
+        "cardView": "卡片视图",
+        "detailView": "详情视图"
+    },
     "tierLabels": {
         "default": [
             "夯",

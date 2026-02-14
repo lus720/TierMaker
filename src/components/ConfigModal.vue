@@ -10,6 +10,7 @@ const { t } = useI18n()
 
 const props = defineProps<{
   configs: TierConfig[]
+  initialExportScale?: number
 }>()
 
 const emit = defineEmits<{
@@ -38,6 +39,8 @@ const imageHeight = ref(133)
 const imageAspectRatio = ref(0.75)
 const imageAspectRatioInput = ref('0.75')
 const tallImageCropMode = ref<'center-top' | 'center-center'>('center-top')
+const detailTitleFontSize = ref(24)
+const detailTextFontSize = ref(16)
 
 // 预设颜色选项
 const presetColors = [
@@ -88,7 +91,7 @@ function initLocalConfigs(configs: TierConfig[]) {
 
 onMounted(() => {
   const savedToken = loadBgmToken()
-  exportScale.value = loadExportScale()
+  exportScale.value = props.initialExportScale !== undefined ? props.initialExportScale : loadExportScale()
   if (savedToken) {
     bgmToken.value = savedToken
   }
@@ -106,6 +109,9 @@ onMounted(() => {
   imageAspectRatioInput.value = (savedText as unknown as string) || imageAspectRatio.value.toString()
   // 计算当前高度
   imageHeight.value = Math.round(imageWidth.value / imageAspectRatio.value)
+  
+  detailTitleFontSize.value = getSize('detail-title-font-size') as number || 24
+  detailTextFontSize.value = getSize('detail-text-font-size') as number || 16
 })
 
 // Debounce helper
@@ -222,7 +228,7 @@ function handleSave() {
   // 为了简单起见，这里显式保存一次它们。
   
   saveBgmToken(bgmToken.value || null)
-  saveExportScale(exportScale.value)
+  // saveExportScale is handled by parent component via event
   emit('update-export-scale', exportScale.value)
   
   emit('close')
@@ -281,6 +287,18 @@ function handleTallImageCropModeChange() {
   })
 }
 
+function handleDetailFontChange(type: 'title' | 'text') {
+  const updates: Record<string, any> = {}
+  if (type === 'title') {
+     updates['detail-title-font-size'] = detailTitleFontSize.value
+  } else {
+     updates['detail-text-font-size'] = detailTextFontSize.value
+  }
+  updateSizes(updates)
+}
+
+
+
 function handleExportScaleInput(event: Event) {
   const target = event.target as HTMLInputElement
   let value = parseInt(target.value, 10)
@@ -337,7 +355,12 @@ function handleResetSettings() {
   imageWidth.value = getSize('image-width') as number || 200 // Default fallback matched to config.yaml
   imageAspectRatio.value = getSize('image-aspect-ratio') as number || 0.75
   imageAspectRatioInput.value = imageAspectRatio.value.toString()
+  imageAspectRatio.value = getSize('image-aspect-ratio') as number || 0.75
+  imageAspectRatioInput.value = imageAspectRatio.value.toString()
   imageHeight.value = Math.round(imageWidth.value / imageAspectRatio.value)
+  
+  detailTitleFontSize.value = getSize('detail-title-font-size') as number || 24
+  detailTextFontSize.value = getSize('detail-text-font-size') as number || 16
   
   // Update UI values immediately
 }
@@ -520,6 +543,38 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             <option value="center-top">{{ t('config.tallImageCropTop') }}</option>
             <option value="center-center">{{ t('config.tallImageCropCenter') }}</option>
           </select>
+        </div>
+      </div>
+
+      <div class="config-section">
+        <h3 class="section-title">{{ t('config.detailConfigSection') || '详情模式设置' }}</h3>
+        <div class="config-item-row">
+          <label for="detail-title-font-size">{{ t('config.detailTitleFontSize') || '标题字号' }}</label>
+          <input
+            id="detail-title-font-size"
+            v-model.number="detailTitleFontSize"
+            type="number"
+            min="12"
+            max="60"
+            step="1"
+            class="config-input"
+            style="max-width: 100px;"
+            @input="handleDetailFontChange('title')"
+          />
+        </div>
+        <div class="config-item-row" style="margin-top: 10px;">
+          <label for="detail-text-font-size">{{ t('config.detailTextFontSize') || '文本框字号' }}</label>
+          <input
+             id="detail-text-font-size"
+             v-model.number="detailTextFontSize"
+             type="number"
+             min="12"
+             max="32"
+             step="1"
+             class="config-input"
+             style="max-width: 100px;"
+             @input="handleDetailFontChange('text')"
+          />
         </div>
       </div>
       

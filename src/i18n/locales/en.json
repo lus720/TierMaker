@@ -211,6 +211,15 @@
     "tierList": {
         "deleteRow": "Delete Row"
     },
+    "detailView": {
+        "comment": "Comment",
+        "commentPlaceholder": "Write your review...",
+        "leftContentPlaceholder": "Add notes...",
+        "openLink": "Open Link",
+        "empty": "No items yet. Add items in card view.",
+        "cardView": "Card View",
+        "detailView": "Detail View"
+    },
     "tierLabels": {
         "default": [
             "S",
