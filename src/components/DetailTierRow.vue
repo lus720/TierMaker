@@ -5,6 +5,7 @@ import RichTextEditor from './RichTextEditor.vue'
 import { getSize, getSetting } from '../utils/configManager'
 import { getItemUrl } from '../utils/url'
 import { adaptCropToRatio, normalizeCropResolution } from '../utils/cropUtils'
+import { DetailViewCropStrategy } from '../strategies/cropStrategy'
 import type { AnimeItem } from '../types'
 import { useI18n } from 'vue-i18n'
 
@@ -23,6 +24,9 @@ const emit = defineEmits<{
   'delete-item': [index: number]
   'edit-item': [item: AnimeItem, index: number, isLongPress?: boolean]
 }>()
+
+// Crop strategy for detail view
+const cropStrategy = new DetailViewCropStrategy()
 
 // Long press logic
 const pressing = ref(false)
@@ -59,25 +63,7 @@ function handlePointerLeave() {
 
 // Shared calculation
 const dimensionStyles = computed(() => {
-  const wConfig = getSize('detail-image-width')
-  const hConfig = getSize('detail-image-height')
-  const rConfig = getSize('detail-image-aspect-ratio')
-
-  const containerWidth = wConfig === 'auto' ? 320 : (Number(wConfig) || 320)
-  
-  // Calculate container height
-  let containerHeight = 0
-  if (hConfig !== 'auto') {
-    containerHeight = Number(hConfig) || 0
-  }
-  
-  if (containerHeight === 0) {
-     const ratio = (rConfig === 'auto' || !rConfig) ? 0.75 : Number(rConfig)
-     const effectiveRatio = isNaN(ratio) ? 0.75 : ratio
-     containerHeight = containerWidth / effectiveRatio
-  }
-  
-  return { width: containerWidth, height: containerHeight }
+  return cropStrategy.getContainerDimensions()
 })
 
 const containerStyle = computed(() => {
@@ -113,56 +99,7 @@ const rightColumnStyle = computed(() => {
 })
 
 function getImageStyle() {
-  const { width: containerWidth, height: containerHeight } = dimensionStyles.value
-  
-  const baseStyle: any = {
-    // Width/Height matches container by default
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
-    objectPosition: 'center top',
-  }
-
-  const crop = props.item.cropPosition
-
-  // Custom Crop (Canvas/CSS replacement)
-   if (typeof crop === 'object' && crop !== null && 'sourceX' in crop) {
-      if (!props.item.naturalWidth || !props.item.naturalHeight) {
-         return { ...baseStyle, visibility: 'hidden' }
-      }
-      
-      const nw = props.item.naturalWidth
-      const nh = props.item.naturalHeight
-      const currentTargetRatio = containerWidth / containerHeight
-      
-      let effectiveCrop = normalizeCropResolution(crop as any, props.item.naturalWidth, nw)
-      effectiveCrop = adaptCropToRatio(effectiveCrop, currentTargetRatio, nw, nh)
-      
-      const { sourceX, sourceY, sourceWidth } = effectiveCrop
-      const scale = containerWidth / sourceWidth
-      const finalWidth = nw * scale
-      const finalHeight = nh * scale
-      const offsetX = -sourceX * scale
-      const offsetY = -sourceY * scale
-      
-      return {
-         width: `${finalWidth}px`,
-         height: `${finalHeight}px`,
-         position: 'absolute',
-         left: `${offsetX}px`,
-         top: `${offsetY}px`,
-         objectFit: 'fill',
-         maxWidth: 'none',
-         maxHeight: 'none'
-      }
-   }
-
-  // Predefined String Positions
-  if (typeof props.item.cropPosition === 'string' && props.item.cropPosition !== 'auto') {
-    baseStyle.objectPosition = props.item.cropPosition
-  }
-
-  return baseStyle
+  return cropStrategy.getImageStyle(props.item)
 }
 
 function handleImageLoad(event: Event) {

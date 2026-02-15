@@ -1,6 +1,5 @@
-```
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
+import { onMounted, watch, nextTick } from 'vue'
 import TierList from './components/TierList.vue'
 import SearchModal from './components/SearchModal.vue'
 import ConfigModal from './components/ConfigModal.vue'
@@ -9,401 +8,140 @@ import ImportModal from './components/ImportModal.vue'
 import ExportModal from './components/ExportModal.vue'
 import DetailTierList from './components/DetailTierList.vue'
 import { useI18n } from 'vue-i18n'
+import { initConfigStyles } from './utils/configManager'
+import type { Tier, AnimeItem, TierConfig, ViewMode } from './types'
+import type { ExportData } from './utils/storage'
+import { useTierStore } from './composables/useTierStore'
+import { useTierConfigStore } from './composables/useTierConfigStore'
+import { useUIStore } from './composables/useUIStore'
+import { useAppSettings } from './composables/useAppSettings'
 
 const { t, locale } = useI18n()
 
-import { initConfigStyles, getSetting } from './utils/configManager'
-import type { Tier, AnimeItem, TierConfig, ViewMode } from './types'
-import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadThemePreference, saveThemePreference, saveTitle, loadTitle, saveTitleFontSize, loadTitleFontSize, clearItemsAndTitle, importAllData, type ExportData, DEFAULT_TIER_CONFIGS, getDefaultTiers, generateUuid, handleLanguageChange, resetSettings, loadHideItemNames, loadExportScale, saveExportScale, loadViewMode, saveViewMode, loadDetailExportScale, saveDetailExportScale } from './utils/storage'
+// Initialize composables
+const tierStore = useTierStore()
+const tierConfigStore = useTierConfigStore()
+const uiStore = useUIStore()
+const appSettings = useAppSettings()
 
-const tiers = ref<Tier[]>([])
-const unrankedTiers = ref<Tier[]>([{
-  id: 'unranked',
-  rows: [{
-    id: 'unranked-row-0',
-    items: []
-  }]
-}])
-const tierConfigs = ref<TierConfig[]>([])
-const showSearch = ref(false)
-const showConfig = ref(false)
-const showEditItem = ref(false)
-const showImportModal = ref(false)
-const currentTierId = ref<string | null>(null)
-const currentRowId = ref<string | null>(null)
-const currentIndex = ref<number | null>(null)
-const currentEditItem = ref<AnimeItem | null>(null)
-const isLongPressEdit = ref(false)
-const title = ref<string>('Tier List')
-const titleFontSize = ref<number>(32)
-const hideItemNames = ref<boolean>(false)
-const exportScale = ref<number>(4)
-const detailExportScale = ref<number>(1) // Detail view export scale
-const isDragging = ref(false) // 全局拖动状态
-const viewMode = ref<ViewMode>(loadViewMode())
-const tierListRef = ref<InstanceType<typeof TierList> | null>(null)
-const configModalKey = ref<number>(0) // 用于强制重新渲染 ConfigModal
+// Destructure for convenience
+const { tiers, unrankedTiers, duplicateItemIds } = tierStore
+const { tierConfigs } = tierConfigStore
+const {
+  showSearch,
+  showConfig,
+  showEditItem,
+  showImportModal,
+  showExportModal,
+  showClearConfirm,
+  currentTierId,
+  currentRowId,
+  currentIndex,
+  currentEditItem,
+  isLongPressEdit,
+  isDragging,
+  viewMode,
+  toggleViewMode,
+  tierListRef,
+  titleRef,
+  appContentRef,
+  fileInputRef,
+  configModalKey,
+  isEditingTitle
+} = uiStore
+const {
+  title,
+  titleFontSize,
+  hideItemNames,
+  exportScale,
+  detailExportScale
+} = appSettings
 
-// 检测重复的条目（根据ID）
-const duplicateItemIds = computed(() => {
-  const idCount = new Map<string | number, number>()
-  
-  // 统计每个ID出现的次数
-  const allTiers = [...tiers.value, ...unrankedTiers.value]
-  allTiers.forEach(tier => {
-    tier.rows.forEach(row => {
-      row.items.forEach(item => {
-        if (item.id) {
-          const count = idCount.get(item.id) || 0
-          idCount.set(item.id, count + 1)
-        }
-      })
-    })
-  })
-  
-  // 返回出现次数大于1的ID集合
-  const duplicates = new Set<string | number>()
-  idCount.forEach((count, id) => {
-    if (count > 1) {
-      duplicates.add(id)
-    }
-  })
-  
-  return duplicates
-})
-
-// 应用主题设置
-function applyTheme(theme: 'light' | 'dark' | 'auto') {
-  const html = document.documentElement
-  html.setAttribute('data-theme', theme)
-}
-
-// 获取当前主题对应的背景色
-function getCurrentThemeBackgroundColor(): string {
-  // 直接从 CSS 变量读取背景色，确保与页面显示一致
-  const computedStyle = getComputedStyle(document.documentElement)
-  const bgColor = computedStyle.getPropertyValue('--bg-color').trim()
-  
-  // 如果成功读取到颜色值，返回它
-  if (bgColor) {
-    return bgColor
-  }
-  
-  // 如果读取失败，回退到检测主题
-  const html = document.documentElement
-  const theme = html.getAttribute('data-theme') || 'auto'
-  
-  if (theme === 'dark') {
-    return '#1a1a1a'
-  }
-  
-  if (theme === 'auto') {
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return '#1a1a1a'
-    }
-  }
-  
-  return '#ffffff' // 默认浅色模式
-}
-
-// 初始化主题
-function initTheme() {
-  const theme = loadThemePreference()
-  applyTheme(theme)
-  
-  // 如果设置为 auto，监听系统主题变化
-  if (theme === 'auto') {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-    const handleSystemThemeChange = (e: MediaQueryListEvent) => {
-      // 只有在设置为 auto 时才响应系统变化
-      const currentTheme = loadThemePreference()
-      if (currentTheme === 'auto') {
-        // data-theme 保持为 auto，CSS 会自动响应媒体查询
-        applyTheme('auto')
-      }
-    }
-    mediaQuery.addEventListener('change', handleSystemThemeChange)
-  }
-}
-
-
-
-// 加载数据
+// Initialize config styles and theme
 onMounted(async () => {
-  // 初始化配置样式（从 YAML 注入 CSS 变量）
   initConfigStyles()
+  appSettings.initTheme()
 
-  initTheme()
-  title.value = loadTitle()
-  titleFontSize.value = loadTitleFontSize()
-  hideItemNames.value = loadHideItemNames()
-  exportScale.value = loadExportScale()
-  detailExportScale.value = loadDetailExportScale()
-  tierConfigs.value = loadTierConfigs()
-  
-  // Async load
-  const allLoadedTiers = await loadTierData()
-  
-  // Extract Unranked Tier
-  const loadedUnranked = allLoadedTiers.find(t => t.id === 'unranked')
-  if (loadedUnranked) {
-    unrankedTiers.value = [loadedUnranked]
-  }
-  
-  // Assign remaining to tiers (filtering happens later)
-  tiers.value = allLoadedTiers.filter(t => t.id !== 'unranked')
+  // Load data
+  await tierStore.loadData()
+  tierConfigStore.loadConfigs()
 
+  // Sync tiers with configs
+  tierStore.syncWithConfigs(tierConfigs.value)
 
-  // Hydration: Convert Blobs to ObjectURLs for display
-  const allTiersToHydrate = [...tiers.value, ...(unrankedTiers.value || [])]
-  allTiersToHydrate.forEach(tier => {
-    tier.rows.forEach(row => {
-      row.items.forEach(item => {
-        if (item.image instanceof Blob) {
-           item._blob = item.image
-           item.image = URL.createObjectURL(item.image)
-        }
-        if (item.originalImage instanceof Blob) {
-           item.originalImage = URL.createObjectURL(item.originalImage)
-        }
-      })
-    })
-  })
+  // Set title and other settings
+  title.value = appSettings.title.value
+  titleFontSize.value = appSettings.titleFontSize.value
+  hideItemNames.value = appSettings.hideItemNames.value
+  exportScale.value = appSettings.exportScale.value
+  detailExportScale.value = appSettings.detailExportScale.value
 
-  // 数据迁移：将 name_cn 迁移到 name，确保只显示一个名字（优先中文）
-  let hasChanges = false
-  const migrateItem = (item: AnimeItem) => {
-    if (item.name_cn) {
-      // 如果有中文名，覆盖 name，并删除 name_cn
-      if (item.name !== item.name_cn) {
-         item.name = item.name_cn
-         hasChanges = true
-      }
-      delete item.name_cn
-      hasChanges = true // 删除属性也算变更
-    }
-  }
-
-  allTiersToHydrate.forEach(tier => {
-    tier.rows.forEach(row => {
-      row.items.forEach(item => {
-        if (item.id) migrateItem(item)
-      })
-    })
-  })
-  
-  // 同样迁移 unrankedTiers (虽然这里还没加载，但为了完整性)
-  // 注意：unrankedTiers 目前是硬编码初始值，如果后续持久化了也需要迁移
-  
-  if (hasChanges) {
-    await saveTierData([...tiers.value, ...unrankedTiers.value])
-  }
-  
-  // 设置标题的初始内容
+  // Set title DOM content
   nextTick(() => {
     if (titleRef.value) {
       titleRef.value.textContent = title.value
     }
   })
-  
-  // 确保 tiers 和 tierConfigs 同步
-  const configIds = new Set(tierConfigs.value.map(c => c.id))
-  
-  // 移除配置中不存在的等级 (且不是 unranked)
-  tiers.value = tiers.value.filter(t => configIds.has(t.id))
-  
-  // 添加配置中存在但 tiers 中不存在的等级
-  tierConfigs.value.forEach(config => {
-    if (!tiers.value.find(t => t.id === config.id)) {
-      tiers.value.push({
-        id: config.id,
-        rows: [{
-          id: `${config.id}-row-0`,
-          items: [],
-        }],
-      })
-    }
-  })
-  
-  // 按配置顺序排序
-  tiers.value.sort((a, b) => {
-    const aOrder = tierConfigs.value.find(c => c.id === a.id)?.order ?? 999
-    const bOrder = tierConfigs.value.find(c => c.id === b.id)?.order ?? 999
-    return aOrder - bOrder
-  })
-  
-  // 保存同步后的数据
-  await saveTierData([...tiers.value, ...unrankedTiers.value])
 })
 
-// 清理事件监听
-onUnmounted(() => {
-  // No cleanup needed for export modal
+// Watch for config modal close to update label width
+watch(uiStore.showConfig, (newVal, oldVal) => {
+  if (oldVal === true && newVal === false) {
+    nextTick(() => {
+      setTimeout(() => {
+        tierListRef.value?.updateLabelWidth()
+      }, 150)
+    })
+  }
 })
 
-// 监听数据变化，自动保存
-watch([tiers, unrankedTiers], async () => {
-  await saveTierData([...tiers.value, ...unrankedTiers.value])
-}, { deep: true })
+// Watch title changes to update DOM when not editing
+watch(title, (newTitle) => {
+  if (!isEditingTitle.value && titleRef.value) {
+    titleRef.value.textContent = newTitle
+  }
+})
 
+// Detail view update handlers
+function handleDetailUpdateComment(tierId: string, rowId: string, index: number, comment: string) {
+  tierStore.updateComment(tierId, rowId, index, comment)
+}
+
+function handleDetailUpdateLeftContent(tierId: string, rowId: string, index: number, leftContent: string) {
+  tierStore.updateLeftContent(tierId, rowId, index, leftContent)
+}
+
+// Event handlers
 function handleAddItem(tierId: string, rowId: string, index: number) {
-  currentTierId.value = tierId
-  currentRowId.value = rowId
-  currentIndex.value = index
-  showSearch.value = true
+  uiStore.openSearch(tierId, rowId, index)
 }
 
 function handleSelectAnime(anime: AnimeItem) {
   if (currentTierId.value && currentRowId.value && currentIndex.value !== null) {
-    const allTiers = [...tiers.value, ...unrankedTiers.value]
-    const tier = allTiers.find(t => t.id === currentTierId.value)
-    if (tier) {
-      const row = tier.rows.find(r => r.id === currentRowId.value)
-      if (row) {
-        // 确保数组长度足够
-        while (row.items.length <= currentIndex.value) {
-          row.items.push({} as AnimeItem)
-        }
-        row.items[currentIndex.value] = anime
-      }
-    }
+    tierStore.addItem(currentTierId.value, currentRowId.value, currentIndex.value, anime)
+    uiStore.closeSearch()
   }
-  showSearch.value = false
-  currentTierId.value = null
-  currentRowId.value = null
-  currentIndex.value = null
 }
 
-// 批量选择动画（用于导入角色或用户列表）
 function handleSelectAnimeMultiple(animes: AnimeItem[]) {
-  console.log('[App] handleSelectAnimeMultiple received items:', animes.length)
-  // 确保 unrankedTiers 存在
-  if (unrankedTiers.value.length === 0) {
-    // 应该不会发生，但以防万一
-    console.warn('[App] unrankedTiers is empty')
-    return
-  }
-  
-  // 修复/清理现有的无效数据（没有 UUID 的项目可能无法渲染）
-  // 这解决了之前导入但因缺少 UUID 而“隐形”的问题
-  let repairedCount = 0
-  unrankedTiers.value.forEach(tier => {
-    tier.rows.forEach(row => {
-      row.items.forEach(item => {
-        if (item.id && !item.uuid) {
-          item.uuid = generateUuid()
-          repairedCount++
-        }
-      })
-    })
-  })
-  if (repairedCount > 0) {
-    console.log(`[App] Repaired ${repairedCount} existing items with missing UUIDs. They should now be visible.`)
-  }
-  
-  const targetTier = unrankedTiers.value[0]
-  if (targetTier.rows.length === 0) {
-    targetTier.rows.push({ id: 'unranked-row-0', items: [] })
-  }
-  const targetRow = targetTier.rows[0]
-  
-  let addedCount = 0
-  
-  animes.forEach(anime => {
-    // 检查是否已存在（通过 ID）
-    const exists = tiers.value.some(t => t.rows.some(r => r.items.some(i => String(i.id) === String(anime.id)))) ||
-                  unrankedTiers.value.some(t => t.rows.some(r => r.items.some(i => String(i.id) === String(anime.id))))
-    
-    if (!exists) {
-      // 确保每个导入的项目都有 UUID，否则 TierRow 中的 v-for key 会重复 ('empty-slot')
-      if (!anime.uuid) {
-        anime.uuid = generateUuid()
-      }
-      targetRow.items.push(anime)
-      addedCount++
-    } else {
-       console.log(`[App] Skipping duplicate: ${anime.id} (${anime.name})`)
-    }
-  })
-  
-  console.log(`[App] Actually added ${addedCount} items. New total in pool: ${targetRow.items.length}`)
+  const addedCount = tierStore.addMultipleItemsToUnranked(animes)
   if (addedCount > 0) {
-    // 触发保存
-    // 注意：watch 会自动处理保存，只要 tiers/unrankedTiers 发生变化
     console.log(`已导入 ${addedCount} 个项目`)
   }
-  
-  // 批量添加后关闭搜索框
-  showSearch.value = false
+  uiStore.closeSearch()
 }
 
 function handleAddRow(tierId: string) {
-  const allTiers = [...tiers.value, ...unrankedTiers.value]
-  const tier = allTiers.find(t => t.id === tierId)
-  if (tier) {
-    const newRowId = `${tierId}-row-${tier.rows.length}`
-    tier.rows.push({
-      id: newRowId,
-      items: [],
-    })
-  }
+  tierStore.addRow(tierId)
 }
 
 function handleDeleteRow(tierId: string, rowId: string) {
-  const allTiers = [...tiers.value, ...unrankedTiers.value]
-  const tier = allTiers.find(t => t.id === tierId)
-  if (tier && tier.rows.length > 1) {
-    const index = tier.rows.findIndex(r => r.id === rowId)
-    if (index !== -1) {
-      tier.rows.splice(index, 1)
-    }
-  }
+  tierStore.deleteRow(tierId, rowId)
 }
 
 function handleDeleteItem(tierId: string, rowId: string, index: number) {
-  const allTiers = [...tiers.value, ...unrankedTiers.value]
-  const tier = allTiers.find(t => t.id === tierId)
-  if (tier) {
-    const row = tier.rows.find(r => r.id === rowId)
-    if (row) {
-      row.items.splice(index, 1)
-    }
-  }
+  tierStore.deleteItem(tierId, rowId, index)
 }
-
-// 视图模式切换
-function toggleViewMode() {
-  viewMode.value = viewMode.value === 'card' ? 'detail' : 'card'
-  saveViewMode(viewMode.value)
-}
-
-// 详情视图 - 更新评论
-function handleDetailUpdateComment(tierId: string, rowId: string, index: number, comment: string) {
-  const allTiers = [...tiers.value, ...unrankedTiers.value]
-  const tier = allTiers.find(t => t.id === tierId)
-  if (tier) {
-    const row = tier.rows.find(r => r.id === rowId)
-    if (row && row.items[index]) {
-      row.items[index].comment = comment
-    }
-  }
-}
-
-// 详情视图 - 更新左侧内容
-function handleDetailUpdateLeftContent(tierId: string, rowId: string, index: number, leftContent: string) {
-  const allTiers = [...tiers.value, ...unrankedTiers.value]
-  const tier = allTiers.find(t => t.id === tierId)
-  if (tier) {
-    const row = tier.rows.find(r => r.id === rowId)
-    if (row && row.items[index]) {
-      row.items[index].leftContent = leftContent
-    }
-  }
-}
-
-// 详情视图 - 删除条目（复用 handleDeleteItem）
-
-
 
 function handleMoveItem(data: {
   fromTierId: string
@@ -414,499 +152,178 @@ function handleMoveItem(data: {
   toIndex: number
   item: AnimeItem
 }) {
-  // 找到源行和目标行
-  // 找到源行和目标行
-  // 必须重新从所有等级中查找，因为 TierList 组件传出来的 TierId 可能是错的（尤其是在 unranked 和 ranked 之间拖动时）
-  const allTiers = [...tiers.value, ...unrankedTiers.value]
-  
-  // 1. 先通过 RowId 找到真正的 Tier 和 Row
-  let realFromTier: Tier | undefined
-  let realFromRow: any
-  let realToTier: Tier | undefined
-  let realToRow: any
-  
-  for (const t of allTiers) {
-    const fRow = t.rows.find(r => r.id === data.fromRowId)
-    if (fRow) {
-      realFromTier = t
-      realFromRow = fRow
-    }
-    const tRow = t.rows.find(r => r.id === data.toRowId)
-    if (tRow) {
-      realToTier = t
-      realToRow = tRow
-    }
-  }
-  
-  if (!realFromTier || !realFromRow || !realToTier || !realToRow) return
-  
-  // 替换掉 data 中的 TierId
-  data.fromTierId = realFromTier.id
-  data.toTierId = realToTier.id
-  
-  const fromRow = realFromRow
-  const toRow = realToRow
-  
-  if (!fromRow || !toRow) return
-  
-  // 确保源索引有效
-  if (data.fromIndex < 0 || data.fromIndex >= fromRow.items.length) {
-    return
-  }
-  
-  // 获取要移动的项目
-  const itemToMove = fromRow.items[data.fromIndex]
-  
-  // 如果是跨等级拖动或跨行拖动
-  if (data.fromTierId !== data.toTierId || data.fromRowId !== data.toRowId) {
-    // 从源行移除
-    fromRow.items.splice(data.fromIndex, 1)
-    
-    // 添加到目标行（确保索引有效，排除空位）
-    const targetIndex = Math.min(data.toIndex, toRow.items.length)
-    toRow.items.splice(targetIndex, 0, itemToMove)
-    
-    saveTierData([...tiers.value, ...unrankedTiers.value])
-  }
+  tierStore.moveItem(data)
 }
 
 function handleReorder(tierId: string, rowId: string, newItems: AnimeItem[]) {
-
-  const allTiers = [...tiers.value, ...unrankedTiers.value]
-  const tier = allTiers.find(t => t.id === tierId)
-  if (!tier) return
-  
-  const row = tier.rows.find(r => r.id === rowId)
-  if (!row) return
-  
-  row.items = newItems
-  saveTierData([...tiers.value, ...unrankedTiers.value])
+  tierStore.reorder(tierId, rowId, newItems)
 }
 
 function handleEditItem(tierId: string, rowId: string, item: AnimeItem, index: number, isLongPress?: boolean) {
-  currentTierId.value = tierId
-  currentRowId.value = rowId
-  currentIndex.value = index
-  currentEditItem.value = { ...item } // 创建副本
-  isLongPressEdit.value = isLongPress || false
-  showEditItem.value = true
+  uiStore.openEditItem(tierId, rowId, item, index, isLongPress)
 }
 
 function handleSaveEditItem(updatedItem: AnimeItem) {
   if (currentTierId.value && currentRowId.value && currentIndex.value !== null) {
-    const allTiers = [...tiers.value, ...unrankedTiers.value]
-    const tier = allTiers.find(t => t.id === currentTierId.value)
-    if (tier) {
-      const row = tier.rows.find(r => r.id === currentRowId.value)
-      if (row) {
-        row.items[currentIndex.value] = updatedItem
-        saveTierData([...tiers.value, ...unrankedTiers.value])
-      }
-    }
+    tierStore.updateItem(currentTierId.value, currentRowId.value, currentIndex.value, updatedItem)
+    uiStore.closeEditItem()
   }
-  showEditItem.value = false
-  currentTierId.value = null
-  currentRowId.value = null
-  currentIndex.value = null
-  currentEditItem.value = null
 }
 
 function handleCloseEditItem() {
-  showEditItem.value = false
-  currentTierId.value = null
-  currentRowId.value = null
-  currentIndex.value = null
-  currentEditItem.value = null
-  isLongPressEdit.value = false
+  uiStore.closeEditItem()
 }
 
 function handleUpdateConfigs(newConfigs: TierConfig[]) {
-  // 1. Identify removed tiers and move their items to Unranked
-  const removedTiers = tiers.value.filter(t => !newConfigs.some(c => c.id === t.id))
-  
-  removedTiers.forEach(tier => {
-    tier.rows.forEach(row => {
-      if (row.items.length > 0) {
-        // Add items to unranked
-        unrankedTiers.value[0].rows[0].items.push(...row.items)
-      }
-    })
-  })
-
-  // 2. Construct new tiers array based on newConfigs order
-  const newTiers: Tier[] = []
-  
-  newConfigs.forEach(config => {
-    const existingTier = tiers.value.find(t => t.id === config.id)
-    
-    if (existingTier) {
-      // Keep existing tier data (ID is immutable, so no need to update it)
-      // Just push it to the new array in the correct order
-      newTiers.push(existingTier)
-    } else {
-      // Create new tier
-      newTiers.push({
-        id: config.id,
-        rows: [{
-          id: `${config.id}-row-0`,
-          items: [],
-        }],
-      })
-    }
-  })
-
-  // 3. Update state
-  tierConfigs.value = newConfigs
-  saveTierConfigs(newConfigs)
-  tiers.value = newTiers
-
-  // Save everything
-  saveTierData([...tiers.value, ...unrankedTiers.value])
-
-  // Update UI
-  nextTick(() => {
-    setTimeout(() => {
-      tierListRef.value?.updateLabelWidth()
-    }, 100)
+  tierConfigStore.updateConfigs(newConfigs, {
+    tiers: tierStore.tiers,
+    unrankedTiers: tierStore.unrankedTiers,
+    addMultipleItemsToUnranked: tierStore.addMultipleItemsToUnranked
   })
 }
 
 function handleUpdateTitleFontSize(newFontSize: number) {
-  titleFontSize.value = newFontSize
-  saveTitleFontSize(newFontSize)
+  appSettings.titleFontSize.value = newFontSize
 }
 
 function handleUpdateTheme(theme: 'light' | 'dark' | 'auto') {
-  applyTheme(theme)
+  appSettings.applyTheme(theme)
 }
 
 function handleUpdateHideItemNames(hide: boolean) {
-  hideItemNames.value = hide
+  appSettings.hideItemNames.value = hide
 }
 
 function handleUpdateExportScale(scale: number) {
-  if (viewMode.value === 'detail') {
-    detailExportScale.value = scale
-    saveDetailExportScale(scale)
-  } else {
-    exportScale.value = scale
-    saveExportScale(scale)
-  }
+  appSettings.updateExportScale(scale, viewMode.value)
 }
 
 async function handleClearAll() {
-  try {
-    // 只清空作品数据和标题，保留所有设置
-    await clearItemsAndTitle()
-    
-    // 重置 tiers 为默认结构（清空所有作品）
-    tiers.value = tierConfigs.value.map(config => ({
-      id: config.id,
-      rows: [{
-        id: `${config.id}-row-0`,
-        items: [],
-      }],
-    }))
-    // 清空备选框
-    unrankedTiers.value = [{
-      id: 'unranked',
-      rows: [{
-        id: 'unranked-row-0',
-        items: []
-      }]
-    }]
-
-    await saveTierData([...tiers.value, ...unrankedTiers.value])
-    
-    // 重置标题和字体大小
-    title.value = 'Tier List'
-    titleFontSize.value = 32
-    saveTitle(title.value)
-    saveTitleFontSize(titleFontSize.value)
-    
-    // 更新标题显示
+  const result = await appSettings.clearAll(tierConfigs.value)
+  if (result.success) {
+    tierStore.clearAll(tierConfigs.value)
+    // Reset title and font size already handled in clearAll
     nextTick(() => {
       if (titleRef.value) {
         titleRef.value.textContent = title.value
       }
     })
-  } catch (error) {
-    console.error('清空数据失败:', error)
+  } else {
+    console.error('清空数据失败:', result.error)
     alert('清空数据失败，请刷新页面重试')
   }
 }
 
 function handleResetSettings() {
-  try {
-    // 重置所有设置，但保留作品数据和标题
-    resetSettings()
-    console.log('[App] handleResetSettings triggered')
-    
-    // 重置评分等级配置 (使用 handleUpdateConfigs 安全地同步，它会处理多余等级的物品归档)
-    const defaultConfigs = getDefaultTiers(locale.value)
-    handleUpdateConfigs(defaultConfigs)
-    
-    // 重置标题字体大小
-    titleFontSize.value = 32
-    saveTitleFontSize(titleFontSize.value)
-    
-    // 重置主题
-    const theme = loadThemePreference()
-    applyTheme(theme)
-    
-    // 重置隐藏作品名（从 config.yaml 读取默认值）
-    hideItemNames.value = getSetting('hide-item-names') ?? false
-    
-    // 重置导出倍率
-    exportScale.value = 4
-    
-    // 注意：不重置标题，保留用户设置的标题
-    
-    // 重置成功，刷新设置页面内容让用户注意到重置已完成
+  const result = appSettings.resetSettingsOperation()
+  if (result.success) {
+    tierConfigStore.resetToDefault(locale.value)
     if (showConfig.value) {
-      // 通过改变 key 强制重新渲染 ConfigModal，实现重新加载内容的效果
-      configModalKey.value++
+      uiStore.refreshConfigModal()
     }
-  } catch (error) {
-    console.error('重置设置失败:', error)
+  } else {
+    console.error('重置设置失败:', result.error)
     alert('重置设置失败，请刷新页面重试')
   }
 }
 
-// 监听设置页面关闭，重新计算宽度
-watch(showConfig, (newVal, oldVal) => {
-  if (oldVal === true && newVal === false) {
-    // 设置页面刚关闭
-    nextTick(() => {
-      setTimeout(() => {
-        tierListRef.value?.updateLabelWidth()
-      }, 150)
-    })
-  }
-})
-
-const titleRef = ref<HTMLHeadingElement | null>(null)
-const isEditingTitle = ref(false)
-const appContentRef = ref<HTMLElement | null>(null)
-const showExportModal = ref(false)
-const showClearConfirm = ref(false)
-
 function handleTitleInput(e: Event) {
   const target = e.target as HTMLHeadingElement
-  // 总是更新 title，即使内容为空（允许删除）
   const newTitle = target.textContent?.trim() || ''
-  title.value = newTitle || 'Tier List'
-  saveTitle(title.value)
+  appSettings.title.value = newTitle || 'Tier List'
 }
 
 function handleTitleBlur(e: Event) {
   const target = e.target as HTMLHeadingElement
-  isEditingTitle.value = false
-  
-  // 先保存当前内容
+  uiStore.isEditingTitle.value = false
+
   const newTitle = target.textContent?.trim() || ''
   if (newTitle) {
-    title.value = newTitle
-    saveTitle(title.value)
+    appSettings.title.value = newTitle
   } else {
-    // 如果为空，恢复为默认值
     const defaultTitle = 'Tier List'
-    title.value = defaultTitle
+    appSettings.title.value = defaultTitle
     target.textContent = defaultTitle
-    saveTitle(defaultTitle)
   }
 }
 
 function handleTitleFocus() {
-  isEditingTitle.value = true
+  uiStore.isEditingTitle.value = true
 }
 
-// 监听 title 变化，只在非编辑状态下更新 DOM
-watch(title, (newTitle) => {
-  if (!isEditingTitle.value && titleRef.value) {
-    titleRef.value.textContent = newTitle
-  }
-})
-
-
-
-// 处理清空数据点击
 function handleClearClick() {
-  showClearConfirm.value = true
+  uiStore.showClearConfirm.value = true
 }
 
-// 确认清空数据
 function handleConfirmClear() {
-  showClearConfirm.value = false
+  uiStore.showClearConfirm.value = false
   handleClearAll()
 }
 
-// 取消清空数据
 function handleCancelClear() {
-  showClearConfirm.value = false
+  uiStore.showClearConfirm.value = false
 }
 
 function toggleLanguage() {
-  const current = locale.value
-  const next = current === 'zh' ? 'en' : 'zh'
-  handleLanguageChange(next)
-  // Reload configs to reflect potential language changes in default tiers
-  tierConfigs.value = loadTierConfigs()
-  // Force title update if it's default? No, keeps user title.
+  appSettings.toggleLanguage()
+  tierConfigStore.loadConfigs()
 }
-
-// 导入数据
-const fileInputRef = ref<HTMLInputElement | null>(null)
 
 function handleImportClick() {
-  showImportModal.value = true
+  uiStore.showImportModal.value = true
 }
 
-// 处理来自 ImportModal 的文件数据导入
 async function handleDataImport(data: ExportData) {
-  // Confirm overwrite
   if (!confirm('导入数据将覆盖当前所有数据，是否继续？')) {
     return
   }
 
-  try {
-     const result = await importAllData(data)
-     if (result.success) {
-        // Reload data
-        title.value = loadTitle()
-        tierConfigs.value = loadTierConfigs()
-        tiers.value = await loadTierData()
-        
-        // Hydration logic as before...
-        tiers.value.forEach(tier => {
-          tier.rows.forEach(row => {
-            row.items.forEach(item => {
-              if (item.image instanceof Blob) {
-                item._blob = item.image
-                item.image = URL.createObjectURL(item.image)
-              }
-              if (item.originalImage instanceof Blob) {
-                item.originalImage = URL.createObjectURL(item.originalImage)
-              }
-            })
-          })
-        })
-        
-        // Sync and sort...
-        const configIds = new Set(tierConfigs.value.map(c => c.id))
-        tiers.value = tiers.value.filter(t => configIds.has(t.id))
-        
-        tierConfigs.value.forEach(config => {
-          if (!tiers.value.find(t => t.id === config.id)) {
-            tiers.value.push({
-              id: config.id,
-              rows: [{
-                id: `${config.id}-row-0`,
-                items: [],
-              }],
-            })
-          }
-        })
-        
-        tiers.value.sort((a, b) => {
-          const aOrder = tierConfigs.value.find(c => c.id === a.id)?.order ?? 999
-          const bOrder = tierConfigs.value.find(c => c.id === b.id)?.order ?? 999
-          return aOrder - bOrder
-        })
-        
-        nextTick(() => {
-          if (titleRef.value) {
-            titleRef.value.textContent = title.value
-          }
-        })
-        
-        
-        showImportModal.value = false // Close modal on success
-     } else {
-        alert(`${t('app.importFailed')}: ${result.error || t('app.unknownError')}`)
-     }
-  } catch (error) {
-     console.error('导入失败:', error)
-     alert(t('app.importError'))
+  const result = await appSettings.importData(data)
+  if (result.success) {
+    await tierStore.loadData()
+    tierConfigStore.loadConfigs()
+    tierStore.syncWithConfigs(tierConfigs.value)
+
+    nextTick(() => {
+      if (titleRef.value) {
+        titleRef.value.textContent = title.value
+      }
+    })
+
+    uiStore.showImportModal.value = false
+  } else {
+    alert(`${t('app.importFailed')}: ${result.error || t('app.unknownError')}`)
   }
 }
-
-// Old handleFileImport can be kept or removed if not used. 
-// We will replace the original handleFileImport logic effectively with this.
-// But wait, the old one read the file. The new modal reads the file and passes `data`.
-// So we need this `handleDataImport`.
 
 function handleFileImport(e: Event) {
   const target = e.target as HTMLInputElement
   const file = target.files?.[0]
   if (!file) return
-  
+
   const reader = new FileReader()
   reader.onload = async (event) => {
     try {
       const jsonStr = event.target?.result as string
       const data: ExportData = JSON.parse(jsonStr)
-      
-      // 验证数据格式
+
       if (!data.tiers || !data.tierConfigs) {
         alert('文件格式不正确')
         return
       }
-      
-      // 确认导入
+
       if (confirm('导入数据将覆盖当前所有数据，是否继续？')) {
-        const result = await importAllData(data)
+        const result = await appSettings.importData(data)
         if (result.success) {
-          // 重新加载数据
-          title.value = loadTitle()
-          tierConfigs.value = loadTierConfigs()
-          tiers.value = await loadTierData()
-          
-          // Hydration
-          tiers.value.forEach(tier => {
-            tier.rows.forEach(row => {
-              row.items.forEach(item => {
-                if (item.image instanceof Blob) {
-                  item._blob = item.image
-                  item.image = URL.createObjectURL(item.image)
-                }
-                if (item.originalImage instanceof Blob) {
-                  item.originalImage = URL.createObjectURL(item.originalImage)
-                }
-              })
-            })
-          })
-          
-          // 同步数据
-          const configIds = new Set(tierConfigs.value.map(c => c.id))
-          tiers.value = tiers.value.filter(t => configIds.has(t.id))
-          
-          tierConfigs.value.forEach(config => {
-            if (!tiers.value.find(t => t.id === config.id)) {
-              tiers.value.push({
-                id: config.id,
-                rows: [{
-                  id: `${config.id}-row-0`,
-                  items: [],
-                }],
-              })
-            }
-          })
-          
-          tiers.value.sort((a, b) => {
-            const aOrder = tierConfigs.value.find(c => c.id === a.id)?.order ?? 999
-            const bOrder = tierConfigs.value.find(c => c.id === b.id)?.order ?? 999
-            return aOrder - bOrder
-          })
-          
-          // 更新标题显示
+          await tierStore.loadData()
+          tierConfigStore.loadConfigs()
+          tierStore.syncWithConfigs(tierConfigs.value)
+
           nextTick(() => {
             if (titleRef.value) {
               titleRef.value.textContent = title.value
             }
           })
-          
-          // 导入成功，无需提示
         } else {
           alert(`导入失败: ${result.error || '未知错误'}`)
         }
@@ -915,23 +332,21 @@ function handleFileImport(e: Event) {
       console.error('导入失败:', error)
       alert('文件格式不正确或已损坏')
     }
-    
-    // 清空文件输入
+
     if (target) {
       target.value = ''
     }
   }
   reader.readAsText(file)
 }
-
 </script>
 
 <template>
   <div class="app" ref="appContentRef">
     <header class="header" :style="{ paddingBottom: `${titleFontSize / 2}px` }">
       <div class="header-left"></div>
-      <h1 
-        class="title" 
+      <h1
+        class="title"
         :style="{ fontSize: `${titleFontSize}px` }"
         contenteditable="true"
         @input="handleTitleInput"
@@ -953,8 +368,8 @@ function handleFileImport(e: Event) {
         <button class="btn btn-secondary" @click="toggleLanguage" :title="t('config.language')">
            {{ locale === 'zh' ? 'English' : '中文' }}
         </button>
-        <button 
-          class="btn btn-secondary" 
+        <button
+          class="btn btn-secondary"
           @click="showExportModal = true"
           :title="t('app.export')"
         >
@@ -1069,7 +484,7 @@ function handleFileImport(e: Event) {
       @update-export-scale="handleUpdateExportScale"
       @reset-settings="handleResetSettings"
     />
-    
+
     <!-- 清空数据确认弹窗 -->
     <div v-if="showClearConfirm" class="confirm-overlay" @click.self="handleCancelClear">
       <div class="confirm-modal">
@@ -1220,8 +635,6 @@ function handleFileImport(e: Event) {
   color: #ffffff;
 }
 
-
-
 .confirm-overlay {
   position: fixed;
   top: 0;
@@ -1326,4 +739,3 @@ function handleFileImport(e: Event) {
   border-color: #b85555;
 }
 </style>
-

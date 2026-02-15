@@ -5,6 +5,7 @@ import { getItemUrl } from '../utils/url'
 import { getSize, getConfig, getSetting } from '../utils/configManager'
 import { generateUuid } from '../utils/storage'
 import { adaptCropToRatio, normalizeCropResolution } from '../utils/cropUtils'
+import { CardViewCropStrategy } from '../strategies/cropStrategy'
 import type { TierRow, AnimeItem } from '../types'
 import { useI18n } from 'vue-i18n'
 
@@ -38,6 +39,9 @@ const emit = defineEmits<{
   'drag-start': []
   'drag-end': []
 }>()
+
+// Crop strategy for card view
+const cropStrategy = new CardViewCropStrategy()
 
 const rowElement = ref<HTMLElement | null>(null)
 let longPressTimer: ReturnType<typeof setTimeout> | undefined
@@ -202,97 +206,7 @@ function handleItemClick(index: number) {
 }
 
 function getImageStyle(item: AnimeItem) {
-  const containerWidth = Number(getSize('image-width')) || 100
-  const containerHeight = Number(getSize('image-height')) || 133
-  
-  // Default style (Cover or unmodified)
-  const baseStyle: any = {
-    width: `${containerWidth}px`,
-    height: `${containerHeight}px`,
-    objectFit: 'cover',
-    objectPosition: 'center',
-  }
-  
-  const crop = item.cropPosition
-  
-  // Custom Crop (Canvas replacement)
-  if (typeof crop === 'object' && crop !== null && 'sourceX' in crop) {
-     // Need natural dimensions to calculate scale
-     if (!item.naturalWidth || !item.naturalHeight) {
-        return {
-           ...baseStyle,
-           visibility: 'hidden', 
-        }
-     }
-     
-     const nw = item.naturalWidth
-     const nh = item.naturalHeight
-     
-     // 1. 获取目标参数
-     const currentTargetRatio = containerWidth / containerHeight
-     
-     // 2. 规范化分辨率 (处理高清保存/低清预览问题) -> 得到在当前 nw/nh 下的正确 crop
-     let effectiveCrop = normalizeCropResolution(crop as any, item.naturalWidth, nw)
-     
-     // 3. 动态适配当前宽高比 (处理尺寸设置变更问题) -> 得到 perfect crop for current view
-     effectiveCrop = adaptCropToRatio(effectiveCrop, currentTargetRatio, nw, nh)
-     
-     const { sourceX, sourceY, sourceWidth } = effectiveCrop
-     
-     // 4. 计算显示样式 (Css-based cropping)
-     const scale = containerWidth / sourceWidth
-     const finalWidth = nw * scale
-     const finalHeight = nh * scale
-     const offsetX = -sourceX * scale
-     const offsetY = -sourceY * scale
-     
-     return {
-        width: `${finalWidth}px`,
-        height: `${finalHeight}px`,
-        position: 'absolute',
-        left: `${offsetX}px`,
-        top: `${offsetY}px`,
-        objectFit: 'fill', 
-        maxWidth: 'none',
-        maxHeight: 'none'
-     }
-  }
-  
-  // Predefined String Positions
-  if (typeof crop === 'string' && crop !== 'auto') {
-     return {
-        ...baseStyle,
-        objectPosition: crop
-     }
-  }
-  
-  // Auto: 根据宽高比智能选择裁剪位置
-  if (item.naturalWidth && item.naturalHeight) {
-     const targetRatio = Number(getSize('image-aspect-ratio')) || (containerWidth / containerHeight)
-     const naturalRatio = item.naturalWidth / item.naturalHeight
-     
-     // 默认长图顶部对齐，宽图居中对齐
-     if (naturalRatio > targetRatio) {
-        // 宽图：始终水平居中
-        return {
-           ...baseStyle,
-           objectPosition: 'center center'
-        }
-     } else {
-        // 长图：根据配置决定是顶部对齐还是从居中裁剪
-        const tallImageMode = getSetting('tall-image-crop-mode') || 'center-top'
-        return {
-           ...baseStyle,
-           objectPosition: tallImageMode === 'center-top' ? 'center top' : 'center center'
-        }
-     }
-  }
-  
-  // naturalWidth/Height 未就绪时，先隐藏避免闪烁
-  return {
-     ...baseStyle,
-     visibility: 'hidden'
-  }
+  return cropStrategy.getImageStyle(item)
 }
 
 function handleImageLoad(event: Event) {
