@@ -78,7 +78,7 @@ settings:
   detail-export-scale: 1 # 1-6 (详情视图导出倍率)
   hide-item-names: true  
   compact-mode: true     # 紧凑模式（无间距）
-  tall-image-crop-mode: 'center-top'  # 长图裁剪模式：center-top（顶部对齐）或 center-center（居中）
+  tall-image-crop-mode: 'center-center'  # 长图裁剪模式：center-top（顶部对齐）或 center-center（居中）
 
 tiers:
   # ==================== 默认评分等级 ====================
