@@ -292,7 +292,7 @@ function handleLinkClick() {
   display: block;
   border-radius: 4px;
   width: 100%;
-  height: auto;
+  height: 100%;
   object-fit: cover;
 }
 
@@ -304,7 +304,7 @@ function handleLinkClick() {
   font-size: 14px;
   border-radius: 4px;
   width: 100%;
-  aspect-ratio: 0.75;
+  height: 100%;
 }
 
 .delete-btn {

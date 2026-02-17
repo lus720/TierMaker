@@ -441,7 +441,8 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
   
   const updates: Record<string, any> = {
     'image-width': w,
-    'image-aspect-ratio': imageAspectRatio.value
+    'image-aspect-ratio': imageAspectRatio.value,
+    'detail-image-aspect-ratio': imageAspectRatio.value
   }
 
   // Only save the text input if the source is 'ratio' (meaning user typed it)

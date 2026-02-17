@@ -53,7 +53,7 @@ export function saveLocalConfig(config: Partial<ConfigData>): void {
 
         // 允许保存的字段白名单 (只允许用户在 UI 上调整的参数)
         // 允许保存的字段白名单 (只允许用户在 UI 上调整的参数)
-        const ALLOWED_SIZE_KEYS = ['image-width', 'image-height', 'image-aspect-ratio', 'image-aspect-ratio-text']
+        const ALLOWED_SIZE_KEYS = ['image-width', 'image-height', 'image-aspect-ratio', 'image-aspect-ratio-text', 'detail-image-aspect-ratio']
 
         // 过滤 config.sizes，只保留白名单内的 key
         const safeSizes: Record<string, any> = {}
