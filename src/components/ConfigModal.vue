@@ -548,9 +548,9 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
       </div>
 
       <div class="config-section">
-        <h3 class="section-title">{{ t('config.detailConfigSection') || '详情模式设置' }}</h3>
+        <h3 class="section-title">{{ t('config.detailFontSize') || '详情视图字体设置' }}</h3>
         <div class="config-item-row">
-          <label for="detail-title-font-size">{{ t('config.detailTitleFontSize') || '标题字号' }}</label>
+          <label for="detail-title-font-size">{{ t('config.detailTitleFontSize') }}</label>
           <input
             id="detail-title-font-size"
             v-model.number="detailTitleFontSize"
@@ -564,7 +564,7 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
           />
         </div>
         <div class="config-item-row" style="margin-top: 10px;">
-          <label for="detail-text-font-size">{{ t('config.detailTextFontSize') || '文本框字号' }}</label>
+          <label for="detail-text-font-size">{{ t('config.detailTextFontSize') }}</label>
           <input
              id="detail-text-font-size"
              v-model.number="detailTextFontSize"
