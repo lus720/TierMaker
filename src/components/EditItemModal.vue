@@ -822,7 +822,6 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
                   :placeholder="t('edit.imageUrlPlaceholder')"
                   @change="handleImageUrlChange"
                 />
-                <button v-if="imageUrl" class="clear-btn" @click="imageUrl = ''" :title="t('edit.clear')">×</button>
               </div>
               <div class="file-upload">
                  <span class="file-upload-text">{{ t('edit.uploadLocal') }}</span>
