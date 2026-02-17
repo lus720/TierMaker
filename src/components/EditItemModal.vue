@@ -58,15 +58,16 @@ const imagePositionInfo = ref<{
 watch(() => props.item, (newItem) => {
   if (newItem) {
     name.value = newItem.name || ''
-    
+
     // Handle image type (string | Blob)
     if (newItem.image instanceof Blob) {
       imageUrl.value = URL.createObjectURL(newItem.image)
     } else {
       imageUrl.value = newItem.image || ''
     }
-    
-    customUrl.value = newItem.url || ''
+
+    // 设置自定义链接：优先使用item.url，如果为空则使用originalUrl
+    customUrl.value = newItem.url || newItem.originalUrl || ''
     imageFile.value = null
     imagePreview.value = imageUrl.value
     // 如果已有自定义坐标，直接使用；否则初始化为 'auto'（会在 updatePreviewCrop 中计算默认位置）
@@ -522,9 +523,6 @@ function handleCancel() {
   handleSave()
 }
 
-function clearCustomUrl() {
-  customUrl.value = ''
-}
 
 function isInsideModalContent(x: number, y: number): boolean {
   if (!modalContentRef.value) return false
@@ -844,7 +842,6 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
                   class="form-input"
                   :placeholder="t('edit.customUrlPlaceholder')"
                 />
-                 <button v-if="customUrl" class="clear-btn" @click="clearCustomUrl" :title="t('edit.clearCustomUrl')">×</button>
               </div>
               <p class="form-hint">{{ t('edit.customUrlHint') }}</p>
             </div>
@@ -1039,21 +1036,7 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
   font-size: 14px;
 }
 
-.clear-btn {
-  margin-left: 8px;
-  padding: 2px 8px;
-  border: 1px solid var(--border-color);
-  background: var(--bg-color);
-  color: var(--text-color);
-  font-size: 12px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
 
-.clear-btn:hover {
-  background: var(--border-color);
-  color: var(--bg-color);
-}
 
 .modal-footer {
   display: flex;
