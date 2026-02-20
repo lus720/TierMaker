@@ -813,22 +813,19 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
 
             <div class="form-group">
               <label for="item-image">{{ t('edit.imageUrl') }}</label>
-              <div class="input-with-action">
-                <input
-                  id="item-image"
-                  v-model="imageUrl"
-                  type="text"
-                  class="form-input"
-                  :placeholder="t('edit.imageUrlPlaceholder')"
-                  @change="handleImageUrlChange"
-                />
-                <button v-if="imageUrl" class="clear-btn" @click="imageUrl = ''" :title="t('edit.clear')">×</button>
-              </div>
+              <input
+                id="item-image"
+                v-model="imageUrl"
+                type="text"
+                class="form-input"
+                :placeholder="t('edit.imageUrlPlaceholder')"
+                @change="handleImageUrlChange"
+              />
               <div class="file-upload">
                  <span class="file-upload-text">{{ t('edit.uploadLocal') }}</span>
-                 <input 
-                    type="file" 
-                    accept="image/*" 
+                 <input
+                    type="file"
+                    accept="image/*"
                     class="file-input"
                     @change="handleFileSelect"
                  />
@@ -837,16 +834,13 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
             
             <div class="form-group">
               <label for="item-custom-url">{{ t('edit.customUrl') }}</label>
-              <div class="input-with-action">
-                <input
-                  id="item-custom-url"
-                  v-model="customUrl"
-                  type="text"
-                  class="form-input"
-                  :placeholder="t('edit.customUrlPlaceholder')"
-                />
-                 <button v-if="customUrl" class="clear-btn" @click="clearCustomUrl" :title="t('edit.clearCustomUrl')">×</button>
-              </div>
+              <input
+                id="item-custom-url"
+                v-model="customUrl"
+                type="text"
+                class="form-input"
+                :placeholder="t('edit.customUrlPlaceholder')"
+              />
               <p class="form-hint">{{ t('edit.customUrlHint') }}</p>
             </div>
           </div>
