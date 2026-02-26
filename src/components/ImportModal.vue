@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { fetchVndbUserList } from '../utils/vndb'
 import { fetchSeasonAnime, formatSeasonName } from '../utils/bangumiList'
 import { getDefaultImage } from '../utils/constants'
+import { listTemplates, listTemplateImages, uploadMultipleToTemplate, deleteTemplate } from '../utils/imgbed'
 import type { AnimeItem } from '../types'
 import type { ExportData } from '../utils/storage'
 import { useI18n } from 'vue-i18n'
@@ -15,7 +16,7 @@ const emit = defineEmits<{
   'import-items': [items: AnimeItem[]]
 }>()
 
-const activeTab = ref<'file' | 'vndb' | 'bangumi'>('file')
+const activeTab = ref<'file' | 'vndb' | 'bangumi' | 'template'>('template')
 
 // --- File Import Logic ---
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -240,6 +241,199 @@ async function handleBangumiImport() {
   }
 }
 
+// --- Template Import Logic ---
+const templateStep = ref<'list' | 'create'>('list')
+const templateList = ref<string[]>([])
+const templateImages = ref<string[]>([])
+const isLoadingTemplates = ref(false)
+const isUploadingTemplate = ref(false)
+const templateStatus = ref('')
+const newTemplateName = ref('')
+const currentTemplateName = ref('')
+const templateFileInputRef = ref<HTMLInputElement | null>(null)
+
+async function loadTemplateList() {
+  isLoadingTemplates.value = true
+  error.value = ''
+  try {
+    templateList.value = await listTemplates()
+  } catch (e: any) {
+    console.error('[ImportModal] loadTemplateList failed:', e)
+    error.value = e.message || t('import.importFailed')
+  } finally {
+    isLoadingTemplates.value = false
+  }
+}
+
+async function handleCreateTemplate() {
+  const name = newTemplateName.value.trim()
+  if (!name) {
+    error.value = t('import.templateNameEmpty')
+    return
+  }
+  // 切换到上传视图
+  currentTemplateName.value = name
+  templateImages.value = []
+  templateStep.value = 'create'
+  newTemplateName.value = ''
+  error.value = ''
+}
+
+function triggerTemplateFileUpload() {
+  templateFileInputRef.value?.click()
+}
+
+const isDragging = ref(false)
+
+function handleTemplateDrop(event: DragEvent) {
+  event.preventDefault()
+  isDragging.value = false
+  const files = event.dataTransfer?.files
+  if (!files || files.length === 0) return
+  // 只保留图片文件
+  const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
+  if (imageFiles.length === 0) return
+  processTemplateFiles(imageFiles)
+}
+
+async function handleTemplateFileUpload(event: Event) {
+  const target = event.target as HTMLInputElement
+  const files = target.files
+  if (!files || files.length === 0) return
+  const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
+  if (imageFiles.length === 0) return
+  processTemplateFiles(imageFiles)
+  if (templateFileInputRef.value) templateFileInputRef.value.value = ''
+}
+
+async function processTemplateFiles(fileArray: File[]) {
+  isUploadingTemplate.value = true
+  error.value = ''
+  
+  templateStatus.value = t('import.uploadingImages', { current: 0, total: fileArray.length })
+  
+  try {
+    const urls = await uploadMultipleToTemplate(
+      currentTemplateName.value,
+      fileArray,
+      (uploaded, total) => {
+        templateStatus.value = t('import.uploadingImages', { current: uploaded, total })
+      }
+    )
+    
+    templateImages.value.push(...urls)
+    templateStatus.value = t('import.uploadSuccess', { count: urls.length })
+    
+    setTimeout(() => {
+      templateStatus.value = ''
+    }, 2000)
+  } catch (e: any) {
+    console.error('[ImportModal] Template upload failed:', e)
+    error.value = e.message || t('import.uploadFailed')
+  } finally {
+    isUploadingTemplate.value = false
+  }
+}
+
+async function handleViewTemplate(name: string) {
+  currentTemplateName.value = name
+  templateStep.value = 'create'
+  isLoadingTemplates.value = true
+  error.value = ''
+  
+  try {
+    templateImages.value = await listTemplateImages(name)
+  } catch (e: any) {
+    console.error('[ImportModal] listTemplateImages failed:', e)
+    error.value = e.message || t('import.importFailed')
+  } finally {
+    isLoadingTemplates.value = false
+  }
+}
+
+async function handleImportTemplate(name: string) {
+  isLoadingTemplates.value = true
+  error.value = ''
+  
+  try {
+    const imageUrls = await listTemplateImages(name)
+    
+    if (imageUrls.length === 0) {
+      error.value = t('import.templateEmpty')
+      isLoadingTemplates.value = false
+      return
+    }
+    
+    const animeItems: AnimeItem[] = imageUrls.map((url, index) => {
+      // 从 URL 提取文件名作为 name
+      const fileName = decodeURIComponent(url.split('/').pop() || `image_${index}`)
+      const nameWithoutExt = fileName.replace(/\.[^.]+$/, '')
+      
+      return {
+        id: `template_${name}_${index}_${Date.now()}`,
+        name: nameWithoutExt,
+        image: url,
+        originalImage: url,
+      }
+    })
+    
+    console.log('[ImportModal] Emitting import-items from template:', animeItems.length)
+    emit('import-items', animeItems)
+    
+    templateStatus.value = t('import.templateImportSuccess', { count: animeItems.length })
+    setTimeout(() => {
+      templateStatus.value = ''
+      emit('close')
+    }, 1500)
+  } catch (e: any) {
+    console.error('[ImportModal] Import template failed:', e)
+    error.value = e.message || t('import.importFailed')
+  } finally {
+    isLoadingTemplates.value = false
+  }
+}
+
+async function handleDeleteTemplate(name: string) {
+  if (!confirm(t('import.deleteTemplateConfirm', { name }))) {
+    return
+  }
+  
+  isLoadingTemplates.value = true
+  error.value = ''
+  
+  try {
+    await deleteTemplate(name)
+    // 刷新列表
+    await loadTemplateList()
+    templateStatus.value = t('import.deleteSuccess')
+    setTimeout(() => {
+      templateStatus.value = ''
+    }, 1500)
+  } catch (e: any) {
+    console.error('[ImportModal] Delete template failed:', e)
+    error.value = e.message || t('import.importFailed')
+  } finally {
+    isLoadingTemplates.value = false
+  }
+}
+
+function handleBackToList() {
+  templateStep.value = 'list'
+  currentTemplateName.value = ''
+  templateImages.value = []
+  error.value = ''
+  templateStatus.value = ''
+  loadTemplateList()
+}
+
+// 当切换到 template tab 时自动加载列表
+watch(activeTab, (newTab) => {
+  if (newTab === 'template') {
+    templateStep.value = 'list'
+    loadTemplateList()
+  }
+})
+
 // 跟踪鼠标按下是否在 overlay 上
 const mouseDownOnOverlay = ref(false)
 
@@ -272,6 +466,13 @@ function handleClose() {
       
       <div class="modal-body">
         <div class="tabs">
+          <button 
+            class="tab-btn" 
+            :class="{ active: activeTab === 'template' }"
+            @click="activeTab = 'template'"
+          >
+            {{ t('import.templateTab') }}
+          </button>
           <button 
             class="tab-btn" 
             :class="{ active: activeTab === 'file' }"
@@ -392,6 +593,120 @@ function handleClose() {
                 </ul>
              </div>
           </div>
+
+          <!-- Template Import -->
+          <div v-if="activeTab === 'template'" class="import-section">
+            <p class="section-desc">{{ t('import.templateDesc') }}</p>
+            
+            <!-- Template List View -->
+            <div v-if="templateStep === 'list'">
+              <!-- Create new template -->
+              <div class="input-group">
+                <input 
+                  v-model="newTemplateName" 
+                  type="text" 
+                  class="modal-input" 
+                  :placeholder="t('import.templateNamePlaceholder')"
+                  @keydown.enter="handleCreateTemplate"
+                />
+                <button 
+                  class="action-btn" 
+                  @click="handleCreateTemplate"
+                  :disabled="!newTemplateName.trim()"
+                >
+                  {{ t('import.createTemplate') }}
+                </button>
+              </div>
+              
+              <div v-if="isLoadingTemplates" class="status-text">
+                {{ t('import.loadingTemplates') }}
+              </div>
+              
+              <!-- Template cards -->
+              <div v-else-if="templateList.length > 0" class="template-list">
+                <div v-for="tpl in templateList" :key="tpl" class="template-card">
+                  <div class="template-name" @click="handleViewTemplate(tpl)">📁 {{ tpl }}</div>
+                  <div class="template-actions">
+                    <button class="template-btn template-btn-import" @click="handleImportTemplate(tpl)" :title="t('import.importTemplate')">
+                      {{ t('import.importTemplate') }}
+                    </button>
+                    <button class="template-btn template-btn-view" @click="handleViewTemplate(tpl)" :title="t('import.viewTemplate')">
+                      {{ t('import.viewTemplate') }}
+                    </button>
+                    <button class="template-btn template-btn-delete" @click="handleDeleteTemplate(tpl)" :title="t('import.deleteTemplate')">
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              <div v-else class="empty-text">
+                {{ t('import.noTemplates') }}
+              </div>
+            </div>
+            
+            <!-- Template Detail / Upload View -->
+            <div v-if="templateStep === 'create'">
+              <div class="template-detail-header">
+                <button class="back-btn" @click="handleBackToList">← {{ t('import.backToList') }}</button>
+                <h3 class="template-detail-title">📁 {{ currentTemplateName }}</h3>
+              </div>
+              
+              <!-- Upload area -->
+              <div 
+                class="file-drop-area"
+                :class="{ dragging: isDragging }"
+                @click="triggerTemplateFileUpload"
+                @dragover.prevent="isDragging = true"
+                @dragleave.prevent="isDragging = false"
+                @drop="handleTemplateDrop"
+              >
+                <div class="icon">🖼️</div>
+                <div class="text">{{ t('import.uploadImages') }}</div>
+                <div class="hint">{{ t('import.uploadImagesHint') }}</div>
+              </div>
+              <input 
+                ref="templateFileInputRef"
+                type="file" 
+                accept="image/*"
+                multiple
+                style="display: none" 
+                @change="handleTemplateFileUpload"
+              />
+              
+              <!-- Upload progress -->
+              <div v-if="isUploadingTemplate" class="status-text">
+                {{ templateStatus }}
+              </div>
+              
+              <!-- Image thumbnails -->
+              <div v-if="templateImages.length > 0" class="template-images">
+                <div class="template-images-header">
+                  <span>{{ t('import.uploadedCount', { count: templateImages.length }) }}</span>
+                  <button class="action-btn" @click="handleImportTemplate(currentTemplateName)">
+                    {{ t('import.importTemplate') }}
+                  </button>
+                </div>
+                <div class="template-thumbnails">
+                  <img 
+                    v-for="(url, idx) in templateImages" 
+                    :key="idx" 
+                    :src="url" 
+                    class="template-thumb"
+                    :alt="`Image ${idx + 1}`"
+                  />
+                </div>
+              </div>
+              
+              <div v-else-if="!isLoadingTemplates && !isUploadingTemplate" class="empty-text">
+                {{ t('import.templateEmpty') }}
+              </div>
+            </div>
+            
+            <div v-if="templateStatus && !isUploadingTemplate" class="status-text">
+              {{ templateStatus }}
+            </div>
+          </div>
         </div>
         
         <div v-if="error" class="error-message">{{ error }}</div>
@@ -403,7 +718,10 @@ function handleClose() {
 <style scoped>
 .modal-overlay {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: var(--modal-overlay);
   display: flex;
   align-items: center;
@@ -414,41 +732,90 @@ function handleClose() {
 .modal-content {
   background: var(--bg-color);
   border: 2px solid var(--border-color);
+  max-width: var(--size-modal-max-width-large, 700px);
   width: 90%;
-  max-width: 500px;
-  border-radius: 8px;
-  overflow: hidden;
+  height: 80vh;
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px 20px;
+  padding: var(--size-app-padding, 20px);
   border-bottom: 2px solid var(--border-color);
-  background: var(--bg-color);
+  flex-shrink: 0;
 }
 
 .modal-title {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: bold;
   color: var(--text-color);
-  margin: 0;
 }
 
 .close-btn {
-  background: none;
-  border: none;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-size: 24px;
   cursor: pointer;
-  color: var(--text-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: var(--border-color);
+  color: var(--bg-color);
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 自定义滚动条样式 - WebKit 浏览器（Chrome, Safari, Edge） */
+.modal-body::-webkit-scrollbar {
+  width: 12px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 6px;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 6px;
+  border: 2px solid var(--scrollbar-track);
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Firefox 滚动条样式 */
+.modal-body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 .tabs {
   display: flex;
   border-bottom: 2px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .tab-btn {
@@ -456,21 +823,26 @@ function handleClose() {
   padding: 12px;
   background: var(--bg-light-color);
   border: none;
-  border-bottom: 2px solid transparent; /* Placeholder to prevent resizing */
+  border-bottom: 2px solid transparent;
   cursor: pointer;
   font-weight: bold;
   color: var(--text-color);
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  background: var(--bg-color);
 }
 
 .tab-btn.active {
   background: var(--bg-color);
-  border-bottom: 2px solid var(--primary-color, #007bff); /* Or use text decoration */
+  border-bottom: 2px solid var(--primary-color, #007bff);
   color: var(--primary-color, #007bff);
 }
 
 .tab-content {
-  padding: 20px;
-  min-height: 200px;
+  padding: var(--size-app-padding, 20px);
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 15px;
@@ -512,72 +884,73 @@ function handleClose() {
 }
 
 .input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
 .id-input {
-    padding: 10px;
-    border: 2px solid var(--border-color);
-    background: var(--input-bg, #fff);
-    color: var(--text-color);
+  padding: 10px;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg, #fff);
+  color: var(--text-color);
 }
 
 .vndb-guide {
-    font-size: 0.9em;
-    color: var(--text-color);
-    opacity: 0.8;
+  font-size: 0.9em;
+  color: var(--text-color);
+  opacity: 0.8;
 }
 
 .vndb-guide ol {
-    padding-left: 20px;
-    margin: 5px 0;
+  padding-left: 20px;
+  margin: 5px 0;
 }
 
 .error-message {
   color: #ff4d4f;
   margin-top: 10px;
   text-align: center;
+  padding: 0 var(--size-app-padding, 20px);
 }
 
 .status-message {
-    color: var(--green-color, #28a745);
-    text-align: center;
-    margin-top: 10px;
+  color: var(--green-color, #28a745);
+  text-align: center;
+  margin-top: 10px;
 }
 
 .season-select {
-    padding: 10px;
-    border: 2px solid var(--border-color);
-    background: var(--input-bg, #fff);
-    color: var(--text-color);
-    width: 100%;
-    font-size: 14px;
-    cursor: pointer;
+  padding: 10px;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg, #fff);
+  color: var(--text-color);
+  width: 100%;
+  font-size: 14px;
+  cursor: pointer;
 }
 
 .season-select:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .loading-message {
-    text-align: center;
-    color: var(--text-color);
-    opacity: 0.8;
-    padding: 20px;
+  text-align: center;
+  color: var(--text-color);
+  opacity: 0.8;
+  padding: 20px;
 }
 
 .bangumi-guide {
-    font-size: 0.9em;
-    color: var(--text-color);
-    opacity: 0.8;
+  font-size: 0.9em;
+  color: var(--text-color);
+  opacity: 0.8;
 }
 
 .bangumi-guide p {
-    margin: 5px 0;
-    line-height: 1.4;
+  margin: 5px 0;
+  line-height: 1.4;
 }
 
 .modal-input {
@@ -585,7 +958,7 @@ function handleClose() {
   border: 2px solid var(--border-color);
   background: var(--input-bg, #fff);
   color: var(--text-color);
-  width: 100%;
+  flex: 1;
   box-sizing: border-box;
   font-size: 14px;
 }
@@ -603,67 +976,235 @@ function handleClose() {
 }
 
 .help-text h4 {
-    margin-bottom: 5px;
-    font-size: 1em;
+  margin-bottom: 5px;
+  font-size: 1em;
 }
 
 .section-desc {
-    color: var(--text-color);
-    margin-bottom: 10px;
-    font-size: 14px;
+  color: var(--text-secondary, var(--text-color));
+  margin-bottom: 10px;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .status-text {
-    margin-top: 10px;
-    color: var(--primary-color, #007bff);
-    text-align: center;
-    font-weight: bold;
+  margin-top: 10px;
+  color: var(--primary-color, #007bff);
+  text-align: center;
+  font-weight: bold;
 }
 
 .source-info {
-    font-size: 12px;
-    color: var(--text-color);
-    opacity: 0.7;
-    margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-color);
+  opacity: 0.7;
+  margin-bottom: 10px;
 }
 
 .file-drop-area {
-    border: 2px dashed var(--border-color);
-    padding: 30px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    background: var(--bg-light-color);
-    border-radius: 8px;
+  border: 2px dashed var(--border-color);
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg-light-color);
 }
 
-.file-drop-area:hover {
-    background: var(--border-color);
-    color: var(--bg-color);
+.file-drop-area:hover,
+.file-drop-area.dragging {
+  background: var(--border-color);
+  color: var(--bg-color);
+  border-color: var(--primary-color, #007bff);
 }
 
 .file-drop-area .icon {
-    font-size: 40px;
-    margin-bottom: 10px;
+  font-size: 40px;
+  margin-bottom: 10px;
 }
 
 .file-drop-area .text {
-    font-size: 16px;
-    font-weight: bold;
+  font-size: 16px;
+  font-weight: bold;
 }
 
 .file-drop-area .hint {
-    font-size: 12px;
-    opacity: 0.7;
-    margin-top: 5px;
+  font-size: 12px;
+  opacity: 0.7;
+  margin-top: 5px;
 }
 
 .warning-text {
-    color: #ff9800;
-    font-size: 12px;
-    margin-bottom: 15px;
+  color: #ff9800;
+  font-size: 12px;
+  margin-bottom: 15px;
+}
+
+/* Template styles */
+.template-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.template-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  border: 2px solid var(--border-color);
+  background: var(--bg-light-color);
+  transition: all 0.2s;
+}
+
+.template-card:hover {
+  border-color: var(--primary-color, #007bff);
+}
+
+.template-name {
+  font-weight: bold;
+  color: var(--text-color);
+  cursor: pointer;
+  flex: 1;
+}
+
+.template-name:hover {
+  color: var(--primary-color, #007bff);
+}
+
+.template-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.template-btn {
+  padding: 6px 12px;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+  transition: all 0.2s;
+}
+
+.template-btn:hover {
+  background: var(--border-color);
+  color: var(--bg-color);
+}
+
+.template-btn-import {
+  border-color: var(--primary-color, #007bff);
+  color: var(--primary-color, #007bff);
+}
+
+.template-btn-import:hover {
+  background: var(--primary-color, #007bff);
+  color: #fff;
+}
+
+.template-btn-view {
+  border-color: var(--border-color);
+  color: var(--text-color);
+}
+
+.template-btn-delete {
+  border-color: #cc6666;
+  color: #cc6666;
+}
+
+.template-btn-delete:hover {
+  background: #cc6666;
+  color: #fff;
+}
+
+.template-detail-header {
+  margin-bottom: 15px;
+}
+
+.back-btn {
+  background: none;
+  border: none;
+  color: var(--primary-color, #007bff);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.back-btn:hover {
+  text-decoration: underline;
+}
+
+.template-detail-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: var(--text-color);
+  margin: 0;
+}
+
+.template-images {
+  margin-top: 15px;
+}
+
+.template-images-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.template-thumbnails {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+/* 缩略图区域滚动条 */
+.template-thumbnails::-webkit-scrollbar {
+  width: 8px;
+}
+
+.template-thumbnails::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 4px;
+}
+
+.template-thumbnails::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+.template-thumbnails::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.template-thumbnails {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.template-thumb {
+  width: 60px;
+  height: 80px;
+  object-fit: cover;
+  border: 2px solid var(--border-color);
+}
+
+.empty-text {
+  text-align: center;
+  color: var(--text-color);
+  opacity: 0.6;
+  margin-top: 20px;
+  font-size: 14px;
 }
 </style>
