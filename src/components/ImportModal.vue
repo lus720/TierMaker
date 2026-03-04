@@ -3,7 +3,9 @@ import { ref, onMounted, watch } from 'vue'
 import { fetchVndbUserList } from '../utils/vndb'
 import { fetchSeasonAnime, formatSeasonName } from '../utils/bangumiList'
 import { getDefaultImage } from '../utils/constants'
-import { listTemplates, listTemplateImages, uploadMultipleToTemplate, deleteTemplate } from '../utils/imgbed'
+import TemplateGallery from './TemplateGallery.vue'
+import TemplateDetail from './TemplateDetail.vue'
+import { getUserId } from '../utils/imgbed'
 import type { AnimeItem } from '../types'
 import type { ExportData } from '../utils/storage'
 import { useI18n } from 'vue-i18n'
@@ -241,196 +243,28 @@ async function handleBangumiImport() {
   }
 }
 
-// --- Template Import Logic ---
-const templateStep = ref<'list' | 'create'>('list')
-const templateList = ref<string[]>([])
-const templateImages = ref<string[]>([])
-const isLoadingTemplates = ref(false)
-const isUploadingTemplate = ref(false)
-const templateStatus = ref('')
-const newTemplateName = ref('')
+// --- Template sub-component state ---
+const userId = getUserId()
+const showTemplateDetail = ref(false)
 const currentTemplateName = ref('')
-const templateFileInputRef = ref<HTMLInputElement | null>(null)
+const currentIsPending = ref(false)
 
-async function loadTemplateList() {
-  isLoadingTemplates.value = true
-  error.value = ''
-  try {
-    templateList.value = await listTemplates()
-  } catch (e: any) {
-    console.error('[ImportModal] loadTemplateList failed:', e)
-    error.value = e.message || t('import.importFailed')
-  } finally {
-    isLoadingTemplates.value = false
-  }
-}
-
-async function handleCreateTemplate() {
-  const name = newTemplateName.value.trim()
-  if (!name) {
-    error.value = t('import.templateNameEmpty')
-    return
-  }
-  // 切换到上传视图
+function openTemplateDetail(name: string, isPending: boolean) {
   currentTemplateName.value = name
-  templateImages.value = []
-  templateStep.value = 'create'
-  newTemplateName.value = ''
-  error.value = ''
+  currentIsPending.value = isPending
+  showTemplateDetail.value = true
 }
 
-function triggerTemplateFileUpload() {
-  templateFileInputRef.value?.click()
-}
-
-const isDragging = ref(false)
-
-function handleTemplateDrop(event: DragEvent) {
-  event.preventDefault()
-  isDragging.value = false
-  const files = event.dataTransfer?.files
-  if (!files || files.length === 0) return
-  // 只保留图片文件
-  const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
-  if (imageFiles.length === 0) return
-  processTemplateFiles(imageFiles)
-}
-
-async function handleTemplateFileUpload(event: Event) {
-  const target = event.target as HTMLInputElement
-  const files = target.files
-  if (!files || files.length === 0) return
-  const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
-  if (imageFiles.length === 0) return
-  processTemplateFiles(imageFiles)
-  if (templateFileInputRef.value) templateFileInputRef.value.value = ''
-}
-
-async function processTemplateFiles(fileArray: File[]) {
-  isUploadingTemplate.value = true
-  error.value = ''
-  
-  templateStatus.value = t('import.uploadingImages', { current: 0, total: fileArray.length })
-  
-  try {
-    const urls = await uploadMultipleToTemplate(
-      currentTemplateName.value,
-      fileArray,
-      (uploaded, total) => {
-        templateStatus.value = t('import.uploadingImages', { current: uploaded, total })
-      }
-    )
-    
-    templateImages.value.push(...urls)
-    templateStatus.value = t('import.uploadSuccess', { count: urls.length })
-    
-    setTimeout(() => {
-      templateStatus.value = ''
-    }, 2000)
-  } catch (e: any) {
-    console.error('[ImportModal] Template upload failed:', e)
-    error.value = e.message || t('import.uploadFailed')
-  } finally {
-    isUploadingTemplate.value = false
-  }
-}
-
-async function handleViewTemplate(name: string) {
-  currentTemplateName.value = name
-  templateStep.value = 'create'
-  isLoadingTemplates.value = true
-  error.value = ''
-  
-  try {
-    templateImages.value = await listTemplateImages(name)
-  } catch (e: any) {
-    console.error('[ImportModal] listTemplateImages failed:', e)
-    error.value = e.message || t('import.importFailed')
-  } finally {
-    isLoadingTemplates.value = false
-  }
-}
-
-async function handleImportTemplate(name: string) {
-  isLoadingTemplates.value = true
-  error.value = ''
-  
-  try {
-    const imageUrls = await listTemplateImages(name)
-    
-    if (imageUrls.length === 0) {
-      error.value = t('import.templateEmpty')
-      isLoadingTemplates.value = false
-      return
-    }
-    
-    const animeItems: AnimeItem[] = imageUrls.map((url, index) => {
-      // 从 URL 提取文件名作为 name
-      const fileName = decodeURIComponent(url.split('/').pop() || `image_${index}`)
-      const nameWithoutExt = fileName.replace(/\.[^.]+$/, '')
-      
-      return {
-        id: `template_${name}_${index}_${Date.now()}`,
-        name: nameWithoutExt,
-        image: url,
-        originalImage: url,
-      }
-    })
-    
-    console.log('[ImportModal] Emitting import-items from template:', animeItems.length)
-    emit('import-items', animeItems)
-    
-    templateStatus.value = t('import.templateImportSuccess', { count: animeItems.length })
-    setTimeout(() => {
-      templateStatus.value = ''
-      emit('close')
-    }, 1500)
-  } catch (e: any) {
-    console.error('[ImportModal] Import template failed:', e)
-    error.value = e.message || t('import.importFailed')
-  } finally {
-    isLoadingTemplates.value = false
-  }
-}
-
-async function handleDeleteTemplate(name: string) {
-  if (!confirm(t('import.deleteTemplateConfirm', { name }))) {
-    return
-  }
-  
-  isLoadingTemplates.value = true
-  error.value = ''
-  
-  try {
-    await deleteTemplate(name)
-    // 刷新列表
-    await loadTemplateList()
-    templateStatus.value = t('import.deleteSuccess')
-    setTimeout(() => {
-      templateStatus.value = ''
-    }, 1500)
-  } catch (e: any) {
-    console.error('[ImportModal] Delete template failed:', e)
-    error.value = e.message || t('import.importFailed')
-  } finally {
-    isLoadingTemplates.value = false
-  }
-}
-
-function handleBackToList() {
-  templateStep.value = 'list'
+function closeTemplateDetail() {
+  showTemplateDetail.value = false
   currentTemplateName.value = ''
-  templateImages.value = []
-  error.value = ''
-  templateStatus.value = ''
-  loadTemplateList()
+  currentIsPending.value = false
 }
 
-// 当切换到 template tab 时自动加载列表
+// 当切换到 template tab 时重置详情视图
 watch(activeTab, (newTab) => {
-  if (newTab === 'template') {
-    templateStep.value = 'list'
-    loadTemplateList()
+  if (newTab !== 'template') {
+    showTemplateDetail.value = false
   }
 })
 
@@ -594,118 +428,23 @@ function handleClose() {
              </div>
           </div>
 
-          <!-- Template Import -->
-          <div v-if="activeTab === 'template'" class="import-section">
-            <p class="section-desc">{{ t('import.templateDesc') }}</p>
-            
-            <!-- Template List View -->
-            <div v-if="templateStep === 'list'">
-              <!-- Create new template -->
-              <div class="input-group">
-                <input 
-                  v-model="newTemplateName" 
-                  type="text" 
-                  class="modal-input" 
-                  :placeholder="t('import.templateNamePlaceholder')"
-                  @keydown.enter="handleCreateTemplate"
-                />
-                <button 
-                  class="action-btn" 
-                  @click="handleCreateTemplate"
-                  :disabled="!newTemplateName.trim()"
-                >
-                  {{ t('import.createTemplate') }}
-                </button>
-              </div>
-              
-              <div v-if="isLoadingTemplates" class="status-text">
-                {{ t('import.loadingTemplates') }}
-              </div>
-              
-              <!-- Template cards -->
-              <div v-else-if="templateList.length > 0" class="template-list">
-                <div v-for="tpl in templateList" :key="tpl" class="template-card">
-                  <div class="template-name" @click="handleViewTemplate(tpl)">📁 {{ tpl }}</div>
-                  <div class="template-actions">
-                    <button class="template-btn template-btn-import" @click="handleImportTemplate(tpl)" :title="t('import.importTemplate')">
-                      {{ t('import.importTemplate') }}
-                    </button>
-                    <button class="template-btn template-btn-view" @click="handleViewTemplate(tpl)" :title="t('import.viewTemplate')">
-                      {{ t('import.viewTemplate') }}
-                    </button>
-                    <button class="template-btn template-btn-delete" @click="handleDeleteTemplate(tpl)" :title="t('import.deleteTemplate')">
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              </div>
-              
-              <div v-else class="empty-text">
-                {{ t('import.noTemplates') }}
-              </div>
-            </div>
-            
-            <!-- Template Detail / Upload View -->
-            <div v-if="templateStep === 'create'">
-              <div class="template-detail-header">
-                <button class="back-btn" @click="handleBackToList">← {{ t('import.backToList') }}</button>
-                <h3 class="template-detail-title">📁 {{ currentTemplateName }}</h3>
-              </div>
-              
-              <!-- Upload area -->
-              <div 
-                class="file-drop-area"
-                :class="{ dragging: isDragging }"
-                @click="triggerTemplateFileUpload"
-                @dragover.prevent="isDragging = true"
-                @dragleave.prevent="isDragging = false"
-                @drop="handleTemplateDrop"
-              >
-                <div class="icon">🖼️</div>
-                <div class="text">{{ t('import.uploadImages') }}</div>
-                <div class="hint">{{ t('import.uploadImagesHint') }}</div>
-              </div>
-              <input 
-                ref="templateFileInputRef"
-                type="file" 
-                accept="image/*"
-                multiple
-                style="display: none" 
-                @change="handleTemplateFileUpload"
-              />
-              
-              <!-- Upload progress -->
-              <div v-if="isUploadingTemplate" class="status-text">
-                {{ templateStatus }}
-              </div>
-              
-              <!-- Image thumbnails -->
-              <div v-if="templateImages.length > 0" class="template-images">
-                <div class="template-images-header">
-                  <span>{{ t('import.uploadedCount', { count: templateImages.length }) }}</span>
-                  <button class="action-btn" @click="handleImportTemplate(currentTemplateName)">
-                    {{ t('import.importTemplate') }}
-                  </button>
-                </div>
-                <div class="template-thumbnails">
-                  <img 
-                    v-for="(url, idx) in templateImages" 
-                    :key="idx" 
-                    :src="url" 
-                    class="template-thumb"
-                    :alt="`Image ${idx + 1}`"
-                  />
-                </div>
-              </div>
-              
-              <div v-else-if="!isLoadingTemplates && !isUploadingTemplate" class="empty-text">
-                {{ t('import.templateEmpty') }}
-              </div>
-            </div>
-            
-            <div v-if="templateStatus && !isUploadingTemplate" class="status-text">
-              {{ templateStatus }}
-            </div>
+          <!-- 模板 Tab -->
+          <div v-if="activeTab === 'template'" class="template-tab-wrap">
+            <!-- 模板详情页 -->
+            <TemplateDetail
+              v-if="showTemplateDetail"
+              :template-name="currentTemplateName"
+              :is-pending="currentIsPending"
+              :user-id="userId"
+              @back="closeTemplateDetail"
+              @import-items="items => { emit('import-items', items); emit('close') }"
+            />
+            <!-- 模板画廈 -->
+            <TemplateGallery
+              v-else
+              @import-items="items => { emit('import-items', items); emit('close') }"
+              @view-template="openTemplateDetail"
+            />
           </div>
         </div>
         
@@ -1206,5 +945,14 @@ function handleClose() {
   opacity: 0.6;
   margin-top: 20px;
   font-size: 14px;
+}
+
+/* 模板 tab 容器：fill remaining height so gallery can scroll internally */
+.template-tab-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 </style>
