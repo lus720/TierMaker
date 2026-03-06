@@ -2,7 +2,7 @@
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import type { TierConfig } from '../types'
 import { getSetting, getSize, updateSizes, saveLocalConfig, clearLocalConfig } from '../utils/configManager'
-import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadThemePreference, saveThemePreference, loadHideItemNames, saveHideItemNames, loadExportScale, saveExportScale, DEFAULT_TIER_CONFIGS } from '../utils/storage'
+import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadHideItemNames, saveHideItemNames, loadExportScale, saveExportScale, DEFAULT_TIER_CONFIGS } from '../utils/storage'
 import { isDarkMode } from '../utils/colors'
 import { useI18n } from 'vue-i18n'
 
@@ -16,7 +16,6 @@ const emit = defineEmits<{
   close: []
   update: [configs: TierConfig[]]
   'update-title-font-size': [fontSize: number]
-  'update-theme': [theme: 'light' | 'dark' | 'auto']
   'update-hide-item-names': [hide: boolean]
   'update-export-scale': [scale: number]
   'reset-settings': []
@@ -25,7 +24,6 @@ const emit = defineEmits<{
 const localConfigs = ref<TierConfig[]>([])
 const bgmToken = ref('')
 const titleFontSize = ref<number>(32)
-const themePreference = ref<'light' | 'dark' | 'auto'>('auto')
 const hideItemNames = ref<boolean>(false)
 const exportScale = ref<number>(4)
 const compactMode = ref<boolean>(false)
@@ -93,7 +91,6 @@ onMounted(() => {
     bgmToken.value = savedToken
   }
   titleFontSize.value = loadTitleFontSize()
-  themePreference.value = loadThemePreference()
   hideItemNames.value = loadHideItemNames()
   compactMode.value = getSetting('compact-mode') || false
   tallImageCropMode.value = getSetting('tall-image-crop-mode') || 'center-top'
@@ -156,7 +153,7 @@ function addTier() {
   const newId = `t${newIdNum}`
   const newLabel = String.fromCharCode(65 + localConfigs.value.length) // A, B, C...
 
-  const isDark = isDarkMode(themePreference.value)
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark' || (document.documentElement.getAttribute('data-theme') === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)
   const defaultColor = isDark ? '#000000' : '#ffffff'
 
   const newConfig: any = {
@@ -247,17 +244,7 @@ function handleClose() {
   emit('close')
 }
 
-function applyTheme(theme: 'light' | 'dark' | 'auto') {
-  const html = document.documentElement
-  html.setAttribute('data-theme', theme)
-}
-
-function handleThemeChange() {
-  // 立即应用主题变化并保存
-  applyTheme(themePreference.value)
-  saveThemePreference(themePreference.value)
-  emit('update-theme', themePreference.value)
-}
+// 现在的 "保存" 按钮其实主要是 "关闭"
 
 function handleHideItemNamesChange() {
   // 立即保存隐藏作品名设置
@@ -325,8 +312,6 @@ function handleResetSettings() {
   // 立即更新本地显示的值（configs 会通过 watch 自动更新）
   exportScale.value = getSetting('export-scale') || 4
   titleFontSize.value = getSetting('title-font-size') || 32
-  themePreference.value = getSetting('theme') || 'auto'
-  themePreference.value = getSetting('theme') || 'auto'
   hideItemNames.value = getSetting('hide-item-names') ?? false
   compactMode.value = getSetting('compact-mode') || false
   
@@ -453,19 +438,6 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
             class="config-input"
             style="max-width: 120px;"
           />
-        </div>
-        <div class="config-item-row" style="margin-top: 15px;">
-          <label for="theme-preference">{{ t('config.themeMode') }}</label>
-          <select
-            id="theme-preference"
-            v-model="themePreference"
-            @change="handleThemeChange"
-            class="config-select"
-          >
-            <option value="auto">{{ t('config.themeAuto') }}</option>
-            <option value="light">{{ t('config.themeLight') }}</option>
-            <option value="dark">{{ t('config.themeDark') }}</option>
-          </select>
         </div>
         <div class="config-item-row" style="margin-top: 15px;">
           <label for="export-scale">{{ t('config.exportScale') }}</label>
