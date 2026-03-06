@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   listTemplateImages,
   listPendingTemplateImages,
@@ -20,6 +21,8 @@ const emit = defineEmits<{
   'import-items': [items: AnimeItem[]]
 }>()
 
+const { t } = useI18n()
+
 const images = ref<string[]>([])
 const isLoading = ref(false)
 const isUploading = ref(false)
@@ -38,7 +41,7 @@ async function loadImages() {
       images.value = await listTemplateImages(props.templateName)
     }
   } catch (e: any) {
-    error.value = e.message || '加载失败'
+    error.value = e.message || t('import.loadFailed')
   } finally {
     isLoading.value = false
   }
@@ -77,7 +80,7 @@ async function processFiles(fileArray: File[]) {
         props.templateName,
         fileArray,
         (uploaded, total) => {
-          uploadStatus.value = `正在上传 ${uploaded} / ${total}...`
+          uploadStatus.value = t('import.uploadingImages', { current: uploaded, total })
         }
       )
     } else {
@@ -85,15 +88,15 @@ async function processFiles(fileArray: File[]) {
         props.templateName,
         fileArray,
         (uploaded, total) => {
-          uploadStatus.value = `正在上传 ${uploaded} / ${total}...`
+          uploadStatus.value = t('import.uploadingImages', { current: uploaded, total })
         }
       )
     }
     images.value.push(...urls)
-    uploadStatus.value = `✓ 已上传 ${urls.length} 张图片`
+    uploadStatus.value = `✓ ` + t('import.uploadSuccess', { count: urls.length })
     setTimeout(() => { uploadStatus.value = '' }, 2000)
   } catch (e: any) {
-    error.value = e.message || '上传失败'
+    error.value = e.message || t('import.uploadFailed')
   } finally {
     isUploading.value = false
   }
@@ -101,7 +104,7 @@ async function processFiles(fileArray: File[]) {
 
 function handleImport() {
   if (images.value.length === 0) {
-    error.value = '该模板暂无图片'
+    error.value = t('import.templateEmpty')
     return
   }
   const animeItems: AnimeItem[] = images.value.map((url, index) => {
@@ -136,18 +139,18 @@ onMounted(loadImages)
   <div class="template-detail">
     <!-- 顶部栏 -->
     <div class="detail-header">
-      <button class="back-btn" @click="emit('back')">← 返回</button>
+      <button class="back-btn" @click="emit('back')">← {{ t('import.back') }}</button>
       <div class="detail-title-row">
         <h3 class="detail-title">
           {{ templateName }}
-          <span v-if="isPending" class="pending-badge">待审核</span>
+          <span v-if="isPending" class="pending-badge">{{ t('import.pendingApproval') }}</span>
         </h3>
         <button
           v-if="images.length > 0"
           class="import-btn"
           @click="handleImport"
         >
-          导入此模板（{{ images.length }} 张）
+          {{ t('import.importThisTemplate', { count: images.length }) }}
         </button>
       </div>
     </div>
@@ -163,8 +166,8 @@ onMounted(loadImages)
         @drop="handleDrop"
       >
         <div class="upload-icon">🖼️</div>
-        <div class="upload-text">点击或拖拽图片到此处上传</div>
-        <div class="upload-hint">支持 JPG、PNG、WEBP 等格式，可一次多选</div>
+        <div class="upload-text">{{ t('import.uploadImagesHintClickDrag') }}</div>
+        <div class="upload-hint">{{ t('import.uploadImagesFormatHint') }}</div>
       </div>
       <input
         ref="fileInputRef"
@@ -177,7 +180,7 @@ onMounted(loadImages)
     </div>
     <!-- 公开模板提示 -->
     <div v-else class="readonly-hint">
-      📖 公开模板为只读，仅可预览和导入
+      {{ t('import.publicTemplateReadOnly') }}
     </div>
 
     <!-- 上传进度 -->
@@ -185,7 +188,7 @@ onMounted(loadImages)
     <div v-else-if="uploadStatus" class="status-text success">{{ uploadStatus }}</div>
 
     <!-- 加载中 -->
-    <div v-if="isLoading" class="status-text">加载中...</div>
+    <div v-if="isLoading" class="status-text">{{ t('import.loading') }}</div>
 
     <!-- 图片网格 -->
     <div v-if="images.length > 0" class="thumbnails-grid">
@@ -196,7 +199,7 @@ onMounted(loadImages)
       >
         <img
           :src="url"
-          :alt="`图片 ${idx + 1}`"
+          :alt="t('import.imageIndex', { index: idx + 1 })"
           class="thumb"
         />
         <!-- 右上角关闭按钮（仅自己的待审核模板显示） -->
@@ -204,12 +207,12 @@ onMounted(loadImages)
           v-if="isPending"
           class="thumb-close-btn"
           @click.stop="removeImage(idx)"
-          title="移除此图片"
+          :title="t('import.removeImageTooltip')"
         >×</button>
       </div>
     </div>
     <div v-else-if="!isLoading" class="empty-hint">
-      {{ isPending ? '暂无图片，请上传' : '该模板暂无图片' }}
+      {{ isPending ? t('import.noImagesPleaseUpload') : t('import.templateEmpty') }}
     </div>
 
     <div v-if="error" class="error-text">{{ error }}</div>

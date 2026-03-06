@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   listTemplates,
   listTemplateImages,
@@ -19,6 +20,8 @@ const emit = defineEmits<{
   'import-items': [items: AnimeItem[]]
   'view-template': [name: string, isPending: boolean]
 }>()
+
+const { t } = useI18n()
 
 // ── 用户标识 ──────────────────────────────────
 // userId 不再在组件内使用，所有权通过 localStorage 管理
@@ -69,7 +72,7 @@ async function loadAll() {
       }),
     ])
   } catch (e: any) {
-    error.value = e.message || '加载失败'
+    error.value = e.message || t('import.loadFailed')
   } finally {
     isLoading.value = false
   }
@@ -78,9 +81,9 @@ async function loadAll() {
 // ── 创建模板（跳转详情页） ──────────────────────
 function handleCreate() {
   const name = newTemplateName.value.trim()
-  if (!name) { createError.value = '请输入模板名称'; return }
+  if (!name) { createError.value = t('import.templateNameEmpty'); return }
   if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-    createError.value = '名称仅支持字母、数字、下划线和中划线'
+    createError.value = t('import.templateNameInvalid')
     return
   }
   createError.value = ''
@@ -100,7 +103,7 @@ async function importTemplate(name: string, isPending: boolean) {
   const imgs = isPending
     ? await listPendingTemplateImages(name)
     : await listTemplateImages(name)
-  if (imgs.length === 0) { error.value = '该模板暂无图片'; return }
+  if (imgs.length === 0) { error.value = t('import.templateEmpty'); return }
   const items: AnimeItem[] = imgs.map((url, i) => ({
     id: `template_${name}_${i}_${Date.now()}`,
     name: decodeURIComponent(url.split('/').pop() || `image_${i}`).replace(/\.[^.]+$/, ''),
@@ -112,25 +115,25 @@ async function importTemplate(name: string, isPending: boolean) {
 
 // ── 删除待审核模板 ──────────────────────────────
 async function handleDeletePending(name: string) {
-  if (!confirm(`确认删除待审核模板「${name}」？`)) return
+  if (!confirm(t('import.deletePendingConfirm', { name }))) return
   try {
     await deletePendingTemplate(name)
     pendingTemplates.value = pendingTemplates.value.filter(n => n !== name)
     delete templateMeta.value[`__pending__${name}`]
   } catch (e: any) {
-    error.value = e.message || '删除失败'
+    error.value = e.message || t('import.deleteFailed')
   }
 }
 
 // ── 删除公开模板（仅管理员场景，保留按钮以一致性） ──
 async function handleDeletePublic(name: string) {
-  if (!confirm(`确认删除公开模板「${name}」？此操作不可恢复。`)) return
+  if (!confirm(t('import.deletePublicConfirm', { name }))) return
   try {
     await deleteTemplate(name)
     publicTemplates.value = publicTemplates.value.filter(n => n !== name)
     delete templateMeta.value[name]
   } catch (e: any) {
-    error.value = e.message || '删除失败'
+    error.value = e.message || t('import.deleteFailed')
   }
 }
 
@@ -144,7 +147,7 @@ onMounted(loadAll)
       <input
         v-model="searchQuery"
         class="search-input"
-        placeholder="搜索模板..."
+        :placeholder="t('search.defaultPlaceholder')"
         type="text"
       />
     </div>
@@ -153,7 +156,7 @@ onMounted(loadAll)
     <div v-if="error" class="error-text">{{ error }}</div>
 
     <!-- 加载中 -->
-    <div v-if="isLoading" class="loading-hint">加载中...</div>
+    <div v-if="isLoading" class="loading-hint">{{ t('import.loading') }}</div>
 
     <!-- 模板网格 -->
     <div v-else class="gallery-grid">
@@ -166,7 +169,7 @@ onMounted(loadAll)
         <!-- 未展开：显示 + 和标签 -->
         <div v-if="!showCreateForm" class="create-inner">
           <div class="create-plus">＋</div>
-          <div class="create-label">创建新模板</div>
+          <div class="create-label">{{ t('import.createTemplate') }}</div>
         </div>
 
         <!-- 展开：居中显示输入表单，替换 + 区域 -->
@@ -174,14 +177,14 @@ onMounted(loadAll)
           <input
             v-model="newTemplateName"
             class="create-input"
-            placeholder="输入模板名称"
+            :placeholder="t('import.templateNamePlaceholder')"
             @keydown.enter="handleCreate"
             autofocus
           />
           <div v-if="createError" class="create-error">{{ createError }}</div>
           <div class="create-actions">
-            <button class="btn-cancel" @click.stop="showCreateForm = false; newTemplateName = ''; createError = ''">取消</button>
-            <button class="btn-confirm" @click.stop="handleCreate">创建</button>
+            <button class="btn-cancel" @click.stop="showCreateForm = false; newTemplateName = ''; createError = ''">{{ t('import.cancel') }}</button>
+            <button class="btn-confirm" @click.stop="handleCreate">{{ t('import.create') }}</button>
           </div>
         </div>
       </div>
@@ -207,7 +210,7 @@ onMounted(loadAll)
             {{ templateMeta[`__pending__${name}`]?.count ?? '...' }}
           </span>
           <!-- 待审核角标 -->
-          <span class="pending-badge">待审核</span>
+          <span class="pending-badge">{{ t('import.pendingApproval') }}</span>
         </div>
         <!-- 卡片底部 -->
         <div class="card-footer">
@@ -215,8 +218,8 @@ onMounted(loadAll)
         </div>
         <!-- 悬停操作层 -->
         <div class="card-overlay">
-          <button class="ov-btn ov-import" @click.stop="importTemplate(name, true)">导入</button>
-          <button class="ov-btn ov-preview" @click.stop="viewTemplate(name, true)">预览</button>
+          <button class="ov-btn ov-import" @click.stop="importTemplate(name, true)">{{ t('import.importTemplate') }}</button>
+          <button class="ov-btn ov-preview" @click.stop="viewTemplate(name, true)">{{ t('import.preview') }}</button>
         </div>
       </div>
 
@@ -245,8 +248,8 @@ onMounted(loadAll)
         </div>
         <!-- 悬停操作层 -->
         <div class="card-overlay">
-          <button class="ov-btn ov-import" @click.stop="importTemplate(name, false)">导入</button>
-          <button class="ov-btn ov-preview" @click.stop="viewTemplate(name, false)">预览</button>
+          <button class="ov-btn ov-import" @click.stop="importTemplate(name, false)">{{ t('import.importTemplate') }}</button>
+          <button class="ov-btn ov-preview" @click.stop="viewTemplate(name, false)">{{ t('import.preview') }}</button>
         </div>
       </div>
 
@@ -255,7 +258,7 @@ onMounted(loadAll)
         v-if="!isLoading && filteredPublic.length === 0 && pendingTemplates.length === 0"
         class="empty-hint"
       >
-        {{ searchQuery ? '没有匹配的模板' : '暂无公开模板' }}
+        {{ searchQuery ? t('import.noMatchingTemplates') : t('import.noPublicTemplates') }}
       </div>
     </div>
   </div>
