@@ -717,6 +717,8 @@ async function handleFileDrop(event: DragEvent) {
   -webkit-line-clamp: 2;
   line-clamp: 2;
   -webkit-box-orient: vertical;
+  word-break: break-all;
+  overflow-wrap: anywhere;
   /* background: var(--bg-color); */
   border-top: none;
 }
