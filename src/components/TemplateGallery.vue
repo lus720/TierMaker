@@ -79,6 +79,10 @@ async function loadAll() {
 function handleCreate() {
   const name = newTemplateName.value.trim()
   if (!name) { createError.value = '请输入模板名称'; return }
+  if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+    createError.value = '名称仅支持字母、数字、下划线和中划线'
+    return
+  }
   createError.value = ''
   showCreateForm.value = false
   newTemplateName.value = ''
