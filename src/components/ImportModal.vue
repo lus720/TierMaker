@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { fetchVndbUserList } from '../utils/vndb'
 import { fetchSeasonAnime, formatSeasonName } from '../utils/bangumiList'
 import { getDefaultImage } from '../utils/constants'
+import TemplateGallery from './TemplateGallery.vue'
+import TemplateDetail from './TemplateDetail.vue'
+import { getUserId } from '../utils/imgbed'
 import type { AnimeItem } from '../types'
 import type { ExportData } from '../utils/storage'
 import { useI18n } from 'vue-i18n'
@@ -15,7 +18,7 @@ const emit = defineEmits<{
   'import-items': [items: AnimeItem[]]
 }>()
 
-const activeTab = ref<'file' | 'vndb' | 'bangumi'>('file')
+const activeTab = ref<'file' | 'vndb' | 'bangumi' | 'template'>('template')
 
 // --- File Import Logic ---
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -240,6 +243,31 @@ async function handleBangumiImport() {
   }
 }
 
+// --- Template sub-component state ---
+const userId = getUserId()
+const showTemplateDetail = ref(false)
+const currentTemplateName = ref('')
+const currentIsPending = ref(false)
+
+function openTemplateDetail(name: string, isPending: boolean) {
+  currentTemplateName.value = name
+  currentIsPending.value = isPending
+  showTemplateDetail.value = true
+}
+
+function closeTemplateDetail() {
+  showTemplateDetail.value = false
+  currentTemplateName.value = ''
+  currentIsPending.value = false
+}
+
+// 当切换到 template tab 时重置详情视图
+watch(activeTab, (newTab) => {
+  if (newTab !== 'template') {
+    showTemplateDetail.value = false
+  }
+})
+
 // 跟踪鼠标按下是否在 overlay 上
 const mouseDownOnOverlay = ref(false)
 
@@ -272,6 +300,13 @@ function handleClose() {
       
       <div class="modal-body">
         <div class="tabs">
+          <button 
+            class="tab-btn" 
+            :class="{ active: activeTab === 'template' }"
+            @click="activeTab = 'template'"
+          >
+            {{ t('import.templateTab') }}
+          </button>
           <button 
             class="tab-btn" 
             :class="{ active: activeTab === 'file' }"
@@ -392,6 +427,25 @@ function handleClose() {
                 </ul>
              </div>
           </div>
+
+          <!-- 模板 Tab -->
+          <div v-if="activeTab === 'template'" class="template-tab-wrap">
+            <!-- 模板详情页 -->
+            <TemplateDetail
+              v-if="showTemplateDetail"
+              :template-name="currentTemplateName"
+              :is-pending="currentIsPending"
+              :user-id="userId"
+              @back="closeTemplateDetail"
+              @import-items="items => { emit('import-items', items); emit('close') }"
+            />
+            <!-- 模板画廈 -->
+            <TemplateGallery
+              v-else
+              @import-items="items => { emit('import-items', items); emit('close') }"
+              @view-template="openTemplateDetail"
+            />
+          </div>
         </div>
         
         <div v-if="error" class="error-message">{{ error }}</div>
@@ -403,7 +457,10 @@ function handleClose() {
 <style scoped>
 .modal-overlay {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background: var(--modal-overlay);
   display: flex;
   align-items: center;
@@ -414,41 +471,90 @@ function handleClose() {
 .modal-content {
   background: var(--bg-color);
   border: 2px solid var(--border-color);
+  max-width: var(--size-modal-max-width-large, 700px);
   width: 90%;
-  max-width: 500px;
-  border-radius: 8px;
-  overflow: hidden;
+  height: 80vh;
+  max-height: 80vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px 20px;
+  padding: var(--size-app-padding, 20px);
   border-bottom: 2px solid var(--border-color);
-  background: var(--bg-color);
+  flex-shrink: 0;
 }
 
 .modal-title {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: bold;
   color: var(--text-color);
-  margin: 0;
 }
 
 .close-btn {
-  background: none;
-  border: none;
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--border-color);
+  background: var(--bg-color);
+  color: var(--text-color);
   font-size: 24px;
   cursor: pointer;
-  color: var(--text-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: all 0.2s;
+}
+
+.close-btn:hover {
+  background: var(--border-color);
+  color: var(--bg-color);
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 自定义滚动条样式 - WebKit 浏览器（Chrome, Safari, Edge） */
+.modal-body::-webkit-scrollbar {
+  width: 12px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 6px;
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 6px;
+  border: 2px solid var(--scrollbar-track);
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Firefox 滚动条样式 */
+.modal-body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 .tabs {
   display: flex;
   border-bottom: 2px solid var(--border-color);
+  flex-shrink: 0;
 }
 
 .tab-btn {
@@ -456,21 +562,26 @@ function handleClose() {
   padding: 12px;
   background: var(--bg-light-color);
   border: none;
-  border-bottom: 2px solid transparent; /* Placeholder to prevent resizing */
+  border-bottom: 2px solid transparent;
   cursor: pointer;
   font-weight: bold;
   color: var(--text-color);
+  transition: all 0.2s;
+}
+
+.tab-btn:hover {
+  background: var(--bg-color);
 }
 
 .tab-btn.active {
   background: var(--bg-color);
-  border-bottom: 2px solid var(--primary-color, #007bff); /* Or use text decoration */
+  border-bottom: 2px solid var(--primary-color, #007bff);
   color: var(--primary-color, #007bff);
 }
 
 .tab-content {
-  padding: 20px;
-  min-height: 200px;
+  padding: var(--size-app-padding, 20px);
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 15px;
@@ -512,72 +623,73 @@ function handleClose() {
 }
 
 .input-group {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
 .id-input {
-    padding: 10px;
-    border: 2px solid var(--border-color);
-    background: var(--input-bg, #fff);
-    color: var(--text-color);
+  padding: 10px;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg, #fff);
+  color: var(--text-color);
 }
 
 .vndb-guide {
-    font-size: 0.9em;
-    color: var(--text-color);
-    opacity: 0.8;
+  font-size: 0.9em;
+  color: var(--text-color);
+  opacity: 0.8;
 }
 
 .vndb-guide ol {
-    padding-left: 20px;
-    margin: 5px 0;
+  padding-left: 20px;
+  margin: 5px 0;
 }
 
 .error-message {
   color: #ff4d4f;
   margin-top: 10px;
   text-align: center;
+  padding: 0 var(--size-app-padding, 20px);
 }
 
 .status-message {
-    color: var(--green-color, #28a745);
-    text-align: center;
-    margin-top: 10px;
+  color: var(--green-color, #28a745);
+  text-align: center;
+  margin-top: 10px;
 }
 
 .season-select {
-    padding: 10px;
-    border: 2px solid var(--border-color);
-    background: var(--input-bg, #fff);
-    color: var(--text-color);
-    width: 100%;
-    font-size: 14px;
-    cursor: pointer;
+  padding: 10px;
+  border: 2px solid var(--border-color);
+  background: var(--input-bg, #fff);
+  color: var(--text-color);
+  width: 100%;
+  font-size: 14px;
+  cursor: pointer;
 }
 
 .season-select:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .loading-message {
-    text-align: center;
-    color: var(--text-color);
-    opacity: 0.8;
-    padding: 20px;
+  text-align: center;
+  color: var(--text-color);
+  opacity: 0.8;
+  padding: 20px;
 }
 
 .bangumi-guide {
-    font-size: 0.9em;
-    color: var(--text-color);
-    opacity: 0.8;
+  font-size: 0.9em;
+  color: var(--text-color);
+  opacity: 0.8;
 }
 
 .bangumi-guide p {
-    margin: 5px 0;
-    line-height: 1.4;
+  margin: 5px 0;
+  line-height: 1.4;
 }
 
 .modal-input {
@@ -585,7 +697,7 @@ function handleClose() {
   border: 2px solid var(--border-color);
   background: var(--input-bg, #fff);
   color: var(--text-color);
-  width: 100%;
+  flex: 1;
   box-sizing: border-box;
   font-size: 14px;
 }
@@ -603,67 +715,79 @@ function handleClose() {
 }
 
 .help-text h4 {
-    margin-bottom: 5px;
-    font-size: 1em;
+  margin-bottom: 5px;
+  font-size: 1em;
 }
 
 .section-desc {
-    color: var(--text-color);
-    margin-bottom: 10px;
-    font-size: 14px;
+  color: var(--text-secondary, var(--text-color));
+  margin-bottom: 10px;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .status-text {
-    margin-top: 10px;
-    color: var(--primary-color, #007bff);
-    text-align: center;
-    font-weight: bold;
+  margin-top: 10px;
+  color: var(--primary-color, #007bff);
+  text-align: center;
+  font-weight: bold;
 }
 
 .source-info {
-    font-size: 12px;
-    color: var(--text-color);
-    opacity: 0.7;
-    margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-color);
+  opacity: 0.7;
+  margin-bottom: 10px;
 }
 
 .file-drop-area {
-    border: 2px dashed var(--border-color);
-    padding: 30px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: all 0.2s;
-    background: var(--bg-light-color);
-    border-radius: 8px;
+  border: 2px dashed var(--border-color);
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg-light-color);
 }
 
-.file-drop-area:hover {
-    background: var(--border-color);
-    color: var(--bg-color);
+.file-drop-area:hover,
+.file-drop-area.dragging {
+  background: var(--border-color);
+  color: var(--bg-color);
+  border-color: var(--primary-color, #007bff);
 }
 
 .file-drop-area .icon {
-    font-size: 40px;
-    margin-bottom: 10px;
+  font-size: 40px;
+  margin-bottom: 10px;
 }
 
 .file-drop-area .text {
-    font-size: 16px;
-    font-weight: bold;
+  font-size: 16px;
+  font-weight: bold;
 }
 
 .file-drop-area .hint {
-    font-size: 12px;
-    opacity: 0.7;
-    margin-top: 5px;
+  font-size: 12px;
+  opacity: 0.7;
+  margin-top: 5px;
 }
 
 .warning-text {
-    color: #ff9800;
-    font-size: 12px;
-    margin-bottom: 15px;
+  color: #ff9800;
+  font-size: 12px;
+  margin-bottom: 15px;
+}
+
+
+/* 模板 tab 容器：fill remaining height so gallery can scroll internally */
+.template-tab-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 </style>

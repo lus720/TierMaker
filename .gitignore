@@ -26,3 +26,7 @@ dist-ssr
 *.sln
 *.sw?
 .agent
+
+# other files
+CloudFlare-ImgBed-Docs
+shinnku-com

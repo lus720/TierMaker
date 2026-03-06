@@ -7,6 +7,8 @@ import ConfigModal from './components/ConfigModal.vue'
 import EditItemModal from './components/EditItemModal.vue'
 import ImportModal from './components/ImportModal.vue'
 import ExportModal from './components/ExportModal.vue'
+import ThemeToggle from './components/ThemeToggle.vue'
+import LanguageSelector from './components/LanguageSelector.vue'
 import { useI18n } from 'vue-i18n'
 
 const { t, locale } = useI18n()
@@ -39,6 +41,7 @@ const hideItemNames = ref<boolean>(false)
 const exportScale = ref<number>(4)
 const isDragging = ref(false) // 全局拖动状态
 const tierListRef = ref<InstanceType<typeof TierList> | null>(null)
+const themeToggleRef = ref<InstanceType<typeof ThemeToggle> | null>(null)
 const configModalKey = ref<number>(0) // 用于强制重新渲染 ConfigModal
 
 // 检测重复的条目（根据ID）
@@ -544,6 +547,11 @@ function handleUpdateTitleFontSize(newFontSize: number) {
 
 function handleUpdateTheme(theme: 'light' | 'dark' | 'auto') {
   applyTheme(theme)
+  themeToggleRef.value?.syncExternalTheme(theme)
+}
+
+function handleHeaderThemeToggle(theme: 'light' | 'dark' | 'auto') {
+  applyTheme(theme)
 }
 
 function handleUpdateHideItemNames(hide: boolean) {
@@ -613,6 +621,7 @@ function handleResetSettings() {
     // 重置主题
     const theme = loadThemePreference()
     applyTheme(theme)
+    themeToggleRef.value?.syncExternalTheme(theme)
     
     // 重置隐藏作品名（从 config.yaml 读取默认值）
     hideItemNames.value = getSetting('hide-item-names') ?? false
@@ -706,14 +715,7 @@ function handleCancelClear() {
   showClearConfirm.value = false
 }
 
-function toggleLanguage() {
-  const current = locale.value
-  const next = current === 'zh' ? 'en' : 'zh'
-  handleLanguageChange(next)
-  // Reload configs to reflect potential language changes in default tiers
-  tierConfigs.value = loadTierConfigs()
-  // Force title update if it's default? No, keeps user title.
-}
+// toggleLanguage is now handled by LanguageSelector internally
 
 // 导入数据
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -903,9 +905,6 @@ function handleFileImport(e: Event) {
         :title="t('app.editTitle')"
       ></h1>
       <div class="header-actions">
-        <button class="btn btn-secondary" @click="toggleLanguage" :title="t('config.language')">
-           {{ locale === 'zh' ? 'English' : '中文' }}
-        </button>
         <button 
           class="btn btn-secondary" 
           @click="showExportModal = true"
@@ -929,6 +928,8 @@ function handleFileImport(e: Event) {
         <button class="btn btn-secondary" @click="showConfig = true">
           {{ t('app.settings') }}
         </button>
+        <ThemeToggle ref="themeToggleRef" @theme-changed="handleHeaderThemeToggle" />
+        <LanguageSelector />
       </div>
     </header>
 
@@ -1100,6 +1101,7 @@ function handleFileImport(e: Event) {
 .header-actions {
   display: flex;
   gap: 10px;
+  align-items: center;
 }
 
 .btn {
