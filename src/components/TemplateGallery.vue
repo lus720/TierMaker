@@ -137,7 +137,6 @@ onMounted(loadAll)
   <div class="gallery-root">
     <!-- 搜索栏 -->
     <div class="search-bar">
-      <span class="search-icon">🔍</span>
       <input
         v-model="searchQuery"
         class="search-input"
@@ -212,9 +211,8 @@ onMounted(loadAll)
         </div>
         <!-- 悬停操作层 -->
         <div class="card-overlay">
-          <button class="ov-btn" @click.stop="viewTemplate(name, true)">预览</button>
           <button class="ov-btn ov-import" @click.stop="importTemplate(name, true)">导入</button>
-          <button class="ov-btn ov-delete" @click.stop="handleDeletePending(name)">删除</button>
+          <button class="ov-btn ov-preview" @click.stop="viewTemplate(name, true)">预览</button>
         </div>
       </div>
 
@@ -243,8 +241,8 @@ onMounted(loadAll)
         </div>
         <!-- 悬停操作层 -->
         <div class="card-overlay">
-          <button class="ov-btn" @click.stop="viewTemplate(name, false)">预览</button>
           <button class="ov-btn ov-import" @click.stop="importTemplate(name, false)">导入</button>
+          <button class="ov-btn ov-preview" @click.stop="viewTemplate(name, false)">预览</button>
         </div>
       </div>
 
@@ -491,36 +489,45 @@ onMounted(loadAll)
 .card-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(0,0,0,0.6);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+  flex-direction: column;
   opacity: 0;
   transition: opacity 0.2s;
-  flex-direction: column;
-  padding: 12px;
 }
 .template-card:hover .card-overlay { opacity: 1; }
 
 .ov-btn {
   width: 100%;
-  padding: 7px 0;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 700;
+  border: none;
+  font-size: 14px;
+  font-weight: bold;
   cursor: pointer;
-  border: 1.5px solid rgba(255,255,255,0.4);
-  background: rgba(255,255,255,0.12);
   color: #fff;
-  transition: background 0.18s;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.ov-btn:hover { background: rgba(255,255,255,0.25); }
+
+/* 导入占据 1/4 */
 .ov-import {
-  background: var(--primary-color, #4a9eff);
-  border-color: var(--primary-color, #4a9eff);
+  flex: 1; /* 1份 */
+  background: rgba(74, 158, 255, 0.6); /* 使用半透明的主题色 */
+  backdrop-filter: blur(2px);
+  font-size: 14px;
 }
-.ov-import:hover { opacity: 0.85; background: var(--primary-color, #4a9eff); }
-.ov-delete { border-color: #f87171; color: #f87171; }
-.ov-delete:hover { background: #f87171; color: #fff; }
+.ov-import:hover {
+  background: rgba(74, 158, 255, 0.9);
+}
+
+/* 预览占据 3/4 */
+.ov-preview {
+  flex: 3; /* 3份 */
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  font-size: 16px;
+}
+.ov-preview:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
 </style>
