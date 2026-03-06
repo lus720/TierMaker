@@ -8,6 +8,7 @@ import EditItemModal from './components/EditItemModal.vue'
 import ImportModal from './components/ImportModal.vue'
 import ExportModal from './components/ExportModal.vue'
 import ThemeToggle from './components/ThemeToggle.vue'
+import LanguageSelector from './components/LanguageSelector.vue'
 import { useI18n } from 'vue-i18n'
 
 const { t, locale } = useI18n()
@@ -714,14 +715,7 @@ function handleCancelClear() {
   showClearConfirm.value = false
 }
 
-function toggleLanguage() {
-  const current = locale.value
-  const next = current === 'zh' ? 'en' : 'zh'
-  handleLanguageChange(next)
-  // Reload configs to reflect potential language changes in default tiers
-  tierConfigs.value = loadTierConfigs()
-  // Force title update if it's default? No, keeps user title.
-}
+// toggleLanguage is now handled by LanguageSelector internally
 
 // 导入数据
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -911,10 +905,6 @@ function handleFileImport(e: Event) {
         :title="t('app.editTitle')"
       ></h1>
       <div class="header-actions">
-        <ThemeToggle ref="themeToggleRef" @theme-changed="handleHeaderThemeToggle" />
-        <button class="btn btn-secondary" @click="toggleLanguage" :title="t('config.language')">
-           {{ locale === 'zh' ? 'English' : '中文' }}
-        </button>
         <button 
           class="btn btn-secondary" 
           @click="showExportModal = true"
@@ -938,6 +928,8 @@ function handleFileImport(e: Event) {
         <button class="btn btn-secondary" @click="showConfig = true">
           {{ t('app.settings') }}
         </button>
+        <ThemeToggle ref="themeToggleRef" @theme-changed="handleHeaderThemeToggle" />
+        <LanguageSelector />
       </div>
     </header>
 
