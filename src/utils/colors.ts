@@ -35,8 +35,8 @@ export function getContrastColor(hexColor: string): string {
     const luminance = getLuminance(rgb.r, rgb.g, rgb.b)
 
     // Threshold 0.5 is standard, but 0.179 is WCAG cutoff.
-    // Using 0.5 as a simple midpoint for black/white decision
-    return luminance > 0.5 ? '#000000' : '#ffffff'
+    // Using 0.179 as a midpoint for black/white decision according to WCAG
+    return luminance > 0.179 ? '#000000' : '#ffffff'
 }
 
 /**
