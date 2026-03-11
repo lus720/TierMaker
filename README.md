@@ -19,6 +19,10 @@ npm run dev
 访问 <http://localhost:5173>
 
 
+## 感谢大佬开源
+
+[我推的格子](https://github.com/ywh555hhh/anime-role-grid)
+
 ## 配置说明
 
 ### Bangumi API
@@ -47,7 +51,9 @@ npm run dev
 
 **大量本地图片，拖动卡顿严重**
 
-切换语言，等级名没有跟随变更
+备选框位置调整
+
+撤销功能
 
 优化模板+模糊收缩+图床服务器
 
