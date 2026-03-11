@@ -642,6 +642,11 @@ function handleResetSettings() {
   }
 }
 
+// 监听语言切换，重新加载等级配置（label 已在 handleLanguageChange 中更新到 localStorage）
+watch(locale, () => {
+  tierConfigs.value = loadTierConfigs()
+})
+
 // 监听设置页面关闭，重新计算宽度
 watch(showConfig, (newVal, oldVal) => {
   if (oldVal === true && newVal === false) {
