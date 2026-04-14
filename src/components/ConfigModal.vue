@@ -2,7 +2,7 @@
 import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import type { TierConfig } from '../types'
 import { getSetting, getSize, updateSizes, saveLocalConfig, clearLocalConfig } from '../utils/configManager'
-import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadHideItemNames, saveHideItemNames, loadExportScale, saveExportScale, DEFAULT_TIER_CONFIGS } from '../utils/storage'
+import { loadBgmToken, saveBgmToken, loadTitleFontSize, saveTitleFontSize, loadHideItemNames, saveHideItemNames, loadExportScale, saveExportScale, loadHideExportTitle, saveHideExportTitle, DEFAULT_TIER_CONFIGS } from '../utils/storage'
 import { isDarkMode } from '../utils/colors'
 import { useI18n } from 'vue-i18n'
 
@@ -17,6 +17,7 @@ const emit = defineEmits<{
   update: [configs: TierConfig[]]
   'update-title-font-size': [fontSize: number]
   'update-hide-item-names': [hide: boolean]
+  'update-hide-export-title': [hide: boolean]
   'update-export-scale': [scale: number]
   'reset-settings': []
 }>()
@@ -25,6 +26,7 @@ const localConfigs = ref<TierConfig[]>([])
 const bgmToken = ref('')
 const titleFontSize = ref<number>(32)
 const hideItemNames = ref<boolean>(false)
+const hideExportTitle = ref<boolean>(false)
 const exportScale = ref<number>(4)
 const compactMode = ref<boolean>(false)
 
@@ -92,6 +94,7 @@ onMounted(() => {
   }
   titleFontSize.value = loadTitleFontSize()
   hideItemNames.value = loadHideItemNames()
+  hideExportTitle.value = loadHideExportTitle()
   compactMode.value = getSetting('compact-mode') || false
   tallImageCropMode.value = getSetting('tall-image-crop-mode') || 'center-top'
   
@@ -252,6 +255,11 @@ function handleHideItemNamesChange() {
   emit('update-hide-item-names', hideItemNames.value)
 }
 
+function handleHideExportTitleChange() {
+  saveHideExportTitle(hideExportTitle.value)
+  emit('update-hide-export-title', hideExportTitle.value)
+}
+
 function handleCompactModeChange() {
   saveLocalConfig({
     settings: {
@@ -313,6 +321,7 @@ function handleResetSettings() {
   exportScale.value = getSetting('export-scale') || 4
   titleFontSize.value = getSetting('title-font-size') || 32
   hideItemNames.value = getSetting('hide-item-names') ?? false
+  hideExportTitle.value = getSetting('hide-export-title') ?? false
   compactMode.value = getSetting('compact-mode') || false
   
   // 重置为 config.yaml 中的默认值
@@ -465,6 +474,19 @@ function handleImageUtilChange(source: 'width' | 'height' | 'ratio') {
               @change="handleHideItemNamesChange"
             />
             <span>{{ t('config.hideItemNames') }}</span>
+          </label>
+        </div>
+
+        <div class="config-item-row" style="margin-top: 15px;">
+          <label for="hide-export-title" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+            <input
+              id="hide-export-title"
+              v-model="hideExportTitle"
+              type="checkbox"
+              class="config-checkbox"
+              @change="handleHideExportTitleChange"
+            />
+            <span>{{ t('config.hideExportTitle') }}</span>
           </label>
         </div>
         

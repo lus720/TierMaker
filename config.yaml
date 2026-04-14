@@ -70,6 +70,7 @@ settings:
   title-font-size: 32
   theme: 'auto'          # light, dark, auto
   export-scale: 4        # 1-6
+  hide-export-title: false
   hide-item-names: true  
   compact-mode: true     # 紧凑模式（无间距）
   tall-image-crop-mode: 'center-top'  # 长图裁剪模式：center-top（顶部对齐）或 center-center（居中）

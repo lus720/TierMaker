@@ -152,6 +152,7 @@
         "exportScale": "导出分辨率倍率:",
         "exportScaleHint": "倍 (推荐: 4倍，范围: 1-6)",
         "hideItemNames": "隐藏作品名",
+        "hideExportTitle": "导出时不导出标题",
         "compactMode": "紧凑模式 (无间距)",
         "tallImageCrop": "长图裁剪模式:",
         "tallImageCropTop": "顶部对齐 (显示头部)",

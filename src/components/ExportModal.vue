@@ -18,6 +18,7 @@ const props = defineProps<{
   appContentRef: HTMLElement | null
   title: string
   titleFontSize: number
+  hideExportTitle: boolean
   exportScale: number
 }>()
 
@@ -310,7 +311,11 @@ async function handleExportImage() {
     } catch (e) {
       console.warn('获取标题字体大小失败，使用默认值32px:', e)
     }
-    configureExportStyles(hiddenContainer, { titleFontSize: computedTitleFontSize, originalAppWidth })
+    configureExportStyles(hiddenContainer, {
+      titleFontSize: computedTitleFontSize,
+      originalAppWidth,
+      hideTitle: props.hideExportTitle,
+    })
 
     exportProgress.value = t('export.generatingImage')
     const canvas = await html2canvas(clonedNode, {
@@ -443,7 +448,11 @@ async function handleExportPDF() {
     await processExportImages(hiddenContainer, currentScale, cropImageWithCanvas, getCorsProxyUrl, applySmartCropToImage, 'pdf')
     
     const originalAppWidth = originalNode.offsetWidth || originalNode.scrollWidth
-    configureExportStyles(hiddenContainer, { titleFontSize: props.titleFontSize, originalAppWidth })
+    configureExportStyles(hiddenContainer, {
+      titleFontSize: props.titleFontSize,
+      originalAppWidth,
+      hideTitle: props.hideExportTitle,
+    })
 
     exportProgress.value = t('export.generatingPDF')
     const canvas = await html2canvas(clonedNode, {

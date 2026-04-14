@@ -152,6 +152,7 @@
         "exportScale": "Export Resolution Scale:",
         "exportScaleHint": "x (Recommended: 4x, Range: 1-6)",
         "hideItemNames": "Hide Item Names",
+        "hideExportTitle": "Hide title when exporting",
         "compactMode": "Compact Mode (No gaps)",
         "tallImageCrop": "Tall Image Crop Mode:",
         "tallImageCropTop": "Top Align (Show head)",
