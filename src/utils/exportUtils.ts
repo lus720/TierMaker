@@ -183,30 +183,41 @@ export function configureExportStyles(
     options: {
         titleFontSize: number
         originalAppWidth: number
+        hideTitle?: boolean
     }
 ): void {
-    const { titleFontSize, originalAppWidth } = options
+    const { titleFontSize, originalAppWidth, hideTitle = false } = options
 
     // 确保 Header 样式正确
     const header = root.querySelector('.header') as HTMLElement
     if (header) {
-        header.style.paddingBottom = `${titleFontSize / 2}px`
-        header.style.marginBottom = '0'
+        if (hideTitle) {
+            header.style.display = 'none'
+        } else {
+            header.style.display = 'flex'
+            header.style.paddingBottom = `${titleFontSize / 2}px`
+            header.style.marginBottom = '0'
+        }
     }
 
     // 确保标题正常显示
     const clonedTitle = root.querySelector('.title') as HTMLElement
     if (clonedTitle) {
-        clonedTitle.style.display = 'block'
-        clonedTitle.style.visibility = 'visible'
-        clonedTitle.style.position = 'relative'
-        clonedTitle.style.left = 'auto'
-        clonedTitle.style.transform = 'none'
-        clonedTitle.style.textAlign = 'center'
-        clonedTitle.style.width = '100%'
-        clonedTitle.style.margin = '0'
-        clonedTitle.style.padding = '0'
-        clonedTitle.style.lineHeight = '1'
+        if (hideTitle) {
+            clonedTitle.style.display = 'none'
+            clonedTitle.style.visibility = 'hidden'
+        } else {
+            clonedTitle.style.display = 'block'
+            clonedTitle.style.visibility = 'visible'
+            clonedTitle.style.position = 'relative'
+            clonedTitle.style.left = 'auto'
+            clonedTitle.style.transform = 'none'
+            clonedTitle.style.textAlign = 'center'
+            clonedTitle.style.width = '100%'
+            clonedTitle.style.margin = '0'
+            clonedTitle.style.padding = '0'
+            clonedTitle.style.lineHeight = '1'
+        }
     }
 
     // 设置 tier-list 的顶部间距

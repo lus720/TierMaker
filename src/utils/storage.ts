@@ -13,6 +13,7 @@ const LAST_SEARCH_SOURCE_KEY = 'last-search-source'
 const THEME_KEY = 'theme-preference'
 const HIDE_ITEM_NAMES_KEY = 'hide-item-names'
 const EXPORT_SCALE_KEY = 'export-scale'
+const HIDE_EXPORT_TITLE_KEY = 'hide-export-title'
 
 /**
  * 默认评分等级配置
@@ -518,6 +519,26 @@ export function loadExportScale(): number {
   return getSetting('export-scale') || 4
 }
 
+export function saveHideExportTitle(hide: boolean): void {
+  try {
+    localStorage.setItem(HIDE_EXPORT_TITLE_KEY, JSON.stringify(hide))
+  } catch (error) {
+    console.error('保存导出隐藏标题设置失败:', error)
+  }
+}
+
+export function loadHideExportTitle(): boolean {
+  try {
+    const saved = localStorage.getItem(HIDE_EXPORT_TITLE_KEY)
+    if (saved !== null) {
+      return JSON.parse(saved)
+    }
+  } catch (error) {
+    console.error('加载导出隐藏标题设置失败:', error)
+  }
+  return getSetting('hide-export-title') ?? false
+}
+
 /**
  * 清空作品数据和标题 (Async)
  */
@@ -540,6 +561,7 @@ export function resetSettings(): void {
     saveThemePreference(getSetting('theme') || 'auto')
     saveHideItemNames(getSetting('hide-item-names') ?? false)
     saveExportScale(getSetting('export-scale') || 4)
+    saveHideExportTitle(getSetting('hide-export-title') ?? false)
     saveTierConfigs(DEFAULT_TIER_CONFIGS)
   } catch (error) {
     console.error('重置设置失败:', error)

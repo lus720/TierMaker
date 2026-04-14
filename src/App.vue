@@ -1,4 +1,3 @@
-```
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 import TierList from './components/TierList.vue'
@@ -15,7 +14,7 @@ const { t, locale } = useI18n()
 
 import { initConfigStyles, getSetting } from './utils/configManager'
 import type { Tier, AnimeItem, TierConfig } from './types'
-import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadThemePreference, saveThemePreference, saveTitle, loadTitle, saveTitleFontSize, loadTitleFontSize, clearItemsAndTitle, importAllData, type ExportData, DEFAULT_TIER_CONFIGS, getDefaultTiers, generateUuid, handleLanguageChange, resetSettings, loadHideItemNames, loadExportScale } from './utils/storage'
+import { loadTierData, saveTierData, loadTierConfigs, saveTierConfigs, loadThemePreference, saveThemePreference, saveTitle, loadTitle, saveTitleFontSize, loadTitleFontSize, clearItemsAndTitle, importAllData, type ExportData, DEFAULT_TIER_CONFIGS, getDefaultTiers, generateUuid, handleLanguageChange, resetSettings, loadHideItemNames, loadExportScale, loadHideExportTitle } from './utils/storage'
 
 const tiers = ref<Tier[]>([])
 const unrankedTiers = ref<Tier[]>([{
@@ -38,6 +37,7 @@ const isLongPressEdit = ref(false)
 const title = ref<string>('Tier List')
 const titleFontSize = ref<number>(32)
 const hideItemNames = ref<boolean>(false)
+const hideExportTitle = ref<boolean>(false)
 const exportScale = ref<number>(4)
 const isDragging = ref(false) // 全局拖动状态
 const tierListRef = ref<InstanceType<typeof TierList> | null>(null)
@@ -137,6 +137,7 @@ onMounted(async () => {
   title.value = loadTitle()
   titleFontSize.value = loadTitleFontSize()
   hideItemNames.value = loadHideItemNames()
+  hideExportTitle.value = loadHideExportTitle()
   exportScale.value = loadExportScale()
   tierConfigs.value = loadTierConfigs()
   
@@ -558,6 +559,10 @@ function handleUpdateHideItemNames(hide: boolean) {
   hideItemNames.value = hide
 }
 
+function handleUpdateHideExportTitle(hide: boolean) {
+  hideExportTitle.value = hide
+}
+
 function handleUpdateExportScale(scale: number) {
   exportScale.value = scale
 }
@@ -625,6 +630,7 @@ function handleResetSettings() {
     
     // 重置隐藏作品名（从 config.yaml 读取默认值）
     hideItemNames.value = getSetting('hide-item-names') ?? false
+    hideExportTitle.value = getSetting('hide-export-title') ?? false
     
     // 重置导出倍率
     exportScale.value = 4
@@ -1001,6 +1007,7 @@ function handleFileImport(e: Event) {
       @update-title-font-size="handleUpdateTitleFontSize"
       @update-theme="handleUpdateTheme"
       @update-hide-item-names="handleUpdateHideItemNames"
+      @update-hide-export-title="handleUpdateHideExportTitle"
       @update-export-scale="handleUpdateExportScale"
       @reset-settings="handleResetSettings"
     />
@@ -1050,6 +1057,7 @@ function handleFileImport(e: Event) {
       :app-content-ref="appContentRef"
       :title="title"
       :title-font-size="titleFontSize"
+      :hide-export-title="hideExportTitle"
       :export-scale="exportScale"
       @close="showExportModal = false"
     />
