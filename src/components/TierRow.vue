@@ -204,6 +204,7 @@ function handleItemClick(index: number) {
 function getImageStyle(item: AnimeItem) {
   const containerWidth = Number(getSize('image-width')) || 100
   const containerHeight = Number(getSize('image-height')) || 133
+  const filter = item.grayscale ? 'grayscale(1)' : 'none'
   
   // Default style (Cover or unmodified)
   const baseStyle: any = {
@@ -211,6 +212,7 @@ function getImageStyle(item: AnimeItem) {
     height: `${containerHeight}px`,
     objectFit: 'cover',
     objectPosition: 'center',
+    filter,
   }
   
   const crop = item.cropPosition
@@ -254,7 +256,8 @@ function getImageStyle(item: AnimeItem) {
         top: `${offsetY}px`,
         objectFit: 'fill', 
         maxWidth: 'none',
-        maxHeight: 'none'
+        maxHeight: 'none',
+        filter,
      }
   }
   

@@ -30,6 +30,19 @@ const isExportingImage = ref(false)
 const isExportingPDF = ref(false)
 const exportProgress = ref('')
 
+function findItemById(itemId: string | null): AnimeItem | null {
+  if (!itemId) return null
+
+  for (const tier of props.tiers) {
+    for (const row of tier.rows) {
+      const item = row.items.find(i => String(i.id) === String(itemId))
+      if (item) return item
+    }
+  }
+
+  return null
+}
+
 // 获取当前主题对应的背景色
 function getCurrentThemeBackgroundColor(): string {
   const computedStyle = getComputedStyle(document.documentElement)
@@ -76,21 +89,11 @@ function getCorsProxyUrl(url: string): string {
 function applySmartCropToImage(img: HTMLImageElement) {
   if (img.naturalWidth && img.naturalHeight) {
     const itemId = img.getAttribute('data-item-id')
+    const item = findItemById(itemId)
     let cropPosition: CropPosition = 'auto'
     
-    if (itemId) {
-      let found = false
-      for (const tier of props.tiers) {
-        for (const row of tier.rows) {
-          const item = row.items.find(i => String(i.id) === String(itemId))
-          if (item) {
-            cropPosition = item.cropPosition || 'auto'
-            found = true
-            break
-          }
-        }
-        if (found) break
-      }
+    if (item) {
+      cropPosition = item.cropPosition || 'auto'
     }
     
     const ratio = img.naturalWidth / img.naturalHeight
@@ -107,6 +110,7 @@ function applySmartCropToImage(img: HTMLImageElement) {
     img.style.left = 'auto'
     img.style.top = 'auto'
     img.style.transform = 'none'
+    img.style.filter = item?.grayscale ? 'grayscale(1)' : 'none'
     
     if (cropPosition === 'auto') {
       if (ratio < targetRatio) {
@@ -129,21 +133,11 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   }
   
   const itemId = img.getAttribute('data-item-id')
+  const item = findItemById(itemId)
   let cropPosition: CropPosition = 'auto'
   
-  if (itemId) {
-    let found = false
-    for (const tier of props.tiers) {
-      for (const row of tier.rows) {
-        const item = row.items.find(i => String(i.id) === String(itemId))
-        if (item) {
-          cropPosition = item.cropPosition || 'auto'
-          found = true
-          break
-        }
-      }
-      if (found) break
-    }
+  if (item) {
+    cropPosition = item.cropPosition || 'auto'
   }
   
   const naturalWidth = img.naturalWidth
@@ -159,6 +153,7 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
   canvas.height = containerHeight
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
+  ctx.filter = item?.grayscale ? 'grayscale(1)' : 'none'
   
   let sourceX = 0
   let sourceY = 0
@@ -171,12 +166,9 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
     let liveNaturalWidth = naturalWidth
     let liveNaturalHeight = naturalHeight
     
-    if (itemId) {
-      const foundItem = props.tiers.flatMap(t => t.rows.flatMap(r => r.items)).find(i => String(i.id) === String(itemId))
-      if (foundItem && foundItem.naturalWidth) {
-        liveNaturalWidth = foundItem.naturalWidth
-        liveNaturalHeight = foundItem.naturalHeight || naturalHeight
-      }
+    if (item?.naturalWidth) {
+      liveNaturalWidth = item.naturalWidth
+      liveNaturalHeight = item.naturalHeight || naturalHeight
     }
     
     const exportTargetRatio = containerWidth / containerHeight
@@ -208,6 +200,7 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
       return null
     }
 
+    ctx.filter = 'none'
     return canvas.toDataURL('image/png')
   } else if (naturalAspectRatio > targetAspectRatio) {
     const scaleByHeight = containerHeight / naturalHeight
@@ -251,6 +244,7 @@ async function cropImageWithCanvas(img: HTMLImageElement, scale: number = 1): Pr
       0, 0, containerWidth, containerHeight
     )
     
+    ctx.filter = 'none'
     return canvas.toDataURL('image/png', 1.0)
   } catch (error) {
     console.error('裁剪图片失败:', error)

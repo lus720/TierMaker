@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, toRaw, watch, onMounted, nextTick, onUnmounted } from 'vue'
+import { computed, ref, toRaw, watch, nextTick } from 'vue'
 import type { AnimeItem, CropPosition } from '../types'
 import { generateDefaultUrl } from '../utils/url'
 import { useI18n } from 'vue-i18n'
@@ -24,6 +24,7 @@ const customUrl = ref('')
 const imageFile = ref<File | null>(null)
 const imagePreview = ref<string>('')
 const cropPosition = ref<CropPosition>('auto')
+const grayscale = ref(false)
 const modalContentRef = ref<HTMLElement | null>(null)
 const mouseDownInside = ref(false)
 const hasHandledLongPressMouseUp = ref(false)
@@ -69,6 +70,7 @@ watch(() => props.item, (newItem) => {
     customUrl.value = newItem.url || ''
     imageFile.value = null
     imagePreview.value = imageUrl.value
+    grayscale.value = !!newItem.grayscale
     // 如果已有自定义坐标，直接使用；否则初始化为 'auto'（会在 updatePreviewCrop 中计算默认位置）
     cropPosition.value = newItem.cropPosition || 'auto'
     // 更新预览图片的裁剪位置
@@ -81,6 +83,10 @@ watch(() => props.item, (newItem) => {
     })
   }
 }, { immediate: true })
+
+const previewImageStyle = computed(() => ({
+  filter: grayscale.value ? 'grayscale(1)' : 'none',
+}))
 
 // 更新预览图片的裁剪位置
 function updatePreviewCrop() {
@@ -512,6 +518,7 @@ function handleSave() {
     originalUrl: originalUrl,
     originalImage: originalImage,
     cropPosition: finalCropPosition,
+    grayscale: grayscale.value,
     _blob: imageFile.value ? toRaw(imageFile.value) : props.item._blob, // Update blob if new file, else keep existing
   }
   
@@ -790,6 +797,7 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
                   :src="imagePreview"
                   alt="原图"
                   class="image-preview-original"
+                  :style="previewImageStyle"
                   @load="updatePreviewCrop"
                 />
                 <!-- 遮罩层：将白框外的部分加暗，突出选中区域 -->
@@ -809,6 +817,18 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
               </div>
               
               <div v-if="imagePreview" class="crop-hint">{{ t('edit.cropHint') }}</div>
+            </div>
+
+            <div class="form-group">
+              <label for="item-grayscale" class="checkbox-label">
+                <input
+                  id="item-grayscale"
+                  v-model="grayscale"
+                  type="checkbox"
+                  class="form-checkbox"
+                />
+                <span>{{ t('edit.grayscale') }}</span>
+              </label>
             </div>
 
             <div class="form-group">
@@ -972,6 +992,21 @@ function updateOverlayFromMask(maskLeft: number, maskTop: number, maskWidth: num
   margin-top: 4px;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.checkbox-label {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  margin-bottom: 0 !important;
+}
+
+.form-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--border-color);
 }
 
 .image-preview-container {
