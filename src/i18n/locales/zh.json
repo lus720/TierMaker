@@ -128,6 +128,7 @@
         "imagePreview": "图片预览",
         "noImage": "暂无图片",
         "cropHint": "拖动白色框框可以调整裁剪位置",
+        "grayscale": "灰度（灰白）",
         "imageUrl": "图片 URL",
         "imageUrlPlaceholder": "输入图片 URL",
         "uploadLocal": "或上传本地图片",

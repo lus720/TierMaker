@@ -128,6 +128,7 @@
         "imagePreview": "Image Preview",
         "noImage": "No image",
         "cropHint": "Drag the white frame to adjust crop position",
+        "grayscale": "Grayscale",
         "imageUrl": "Image URL",
         "imageUrlPlaceholder": "Enter image URL",
         "uploadLocal": "Or upload local image",
